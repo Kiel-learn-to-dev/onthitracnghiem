@@ -1,0 +1,8 @@
+__pycache__/
+.tools/
+*.pyc
+.pytest_cache/
+data/*.db
+data/*.db-*
+web/data/*.json
+output/
