@@ -64,13 +64,9 @@ Tạo schema, nhập 716 lượt câu, OCR PDF ảnh, giữ liên kết về ngu
 
 Giải theo lô nhỏ có checkpoint; mỗi câu lưu ngay vào DB với mức độ, chủ đề, đáp án và lời giải. Hoàn tất bằng rà soát các câu phụ thuộc compiler/undefined behavior.
 
-### Giai đoạn 3 — Xuất bản ôn tập
+### Phạm vi dừng theo yêu cầu hiện tại
 
-Sinh PDF theo chủ đề và độ khó, có danh mục đáp án/lời giải; sinh JSON chỉ gồm các câu đã duyệt.
-
-### Giai đoạn 4 — HTML app
-
-Xây dựng app static với chọn đề 40 câu, đồng hồ tùy chọn, tiến độ, chấm điểm, xem lời giải và làm đề mới.
+Sau khi database đủ 716 lượt câu và mọi lượt có tag độ khó, dừng công việc. Việc sinh PDF, JSON và HTML app được để lại cho kế hoạch riêng sau này.
 
 ## Rủi ro và phương án xử lý
 

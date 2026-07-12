@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS source_questions (
     raw_question TEXT NOT NULL,
     raw_choices_json TEXT NOT NULL,
     canonical_id INTEGER REFERENCES canonical_questions(id),
+    difficulty TEXT CHECK (difficulty IN ('Dễ', 'Vừa', 'Khó', 'Rất khó')),
+    tag_status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (tag_status IN ('pending', 'source_verified', 'rule_based', 'manually_reviewed')),
+    tag_reason TEXT,
     extraction_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (extraction_status IN ('pending', 'extracted', 'needs_review', 'approved')),
     UNIQUE(source_id, ordinal)
@@ -70,8 +74,25 @@ def create_database(db_path: Path) -> None:
     connection = sqlite3.connect(db_path)
     try:
         connection.executescript(SCHEMA)
+        _add_source_question_columns(connection)
     finally:
         connection.close()
+
+
+def _add_source_question_columns(connection: sqlite3.Connection) -> None:
+    """Upgrade older local databases without rebuilding imported source data."""
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(source_questions)")}
+    migrations = {
+        "difficulty": "ALTER TABLE source_questions ADD COLUMN difficulty TEXT "
+        "CHECK (difficulty IN ('Dễ', 'Vừa', 'Khó', 'Rất khó'))",
+        "tag_status": "ALTER TABLE source_questions ADD COLUMN tag_status TEXT NOT NULL "
+        "DEFAULT 'pending' CHECK (tag_status IN "
+        "('pending', 'source_verified', 'rule_based', 'manually_reviewed'))",
+        "tag_reason": "ALTER TABLE source_questions ADD COLUMN tag_reason TEXT",
+    }
+    for column, statement in migrations.items():
+        if column not in columns:
+            connection.execute(statement)
 
 
 def record_source(connection: sqlite3.Connection, filename: str, kind: str, checksum: str) -> int:
