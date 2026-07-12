@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS source_questions (
     tag_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (tag_status IN ('pending', 'source_verified', 'rule_based', 'manually_reviewed')),
     tag_reason TEXT,
+    proposed_answer TEXT CHECK (proposed_answer IN ('A', 'B', 'C', 'D')),
+    solution TEXT,
+    answer_status TEXT NOT NULL DEFAULT 'missing'
+        CHECK (answer_status IN ('missing', 'extracted', 'solved', 'verified', 'needs_review')),
+    answer_reason TEXT,
     extraction_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (extraction_status IN ('pending', 'extracted', 'needs_review', 'approved')),
     UNIQUE(source_id, ordinal)
@@ -89,6 +94,13 @@ def _add_source_question_columns(connection: sqlite3.Connection) -> None:
         "DEFAULT 'pending' CHECK (tag_status IN "
         "('pending', 'source_verified', 'rule_based', 'manually_reviewed'))",
         "tag_reason": "ALTER TABLE source_questions ADD COLUMN tag_reason TEXT",
+        "proposed_answer": "ALTER TABLE source_questions ADD COLUMN proposed_answer TEXT "
+        "CHECK (proposed_answer IN ('A', 'B', 'C', 'D'))",
+        "solution": "ALTER TABLE source_questions ADD COLUMN solution TEXT",
+        "answer_status": "ALTER TABLE source_questions ADD COLUMN answer_status TEXT NOT NULL "
+        "DEFAULT 'missing' CHECK (answer_status IN "
+        "('missing', 'extracted', 'solved', 'verified', 'needs_review'))",
+        "answer_reason": "ALTER TABLE source_questions ADD COLUMN answer_reason TEXT",
     }
     for column, statement in migrations.items():
         if column not in columns:

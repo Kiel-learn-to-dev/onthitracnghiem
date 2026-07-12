@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.import_scanned_pdf import split_ocr_questions
+from scripts.import_scanned_pdf import extract_ocr_answer, split_ocr_questions
 
 
 class ScannedPdfParsingTests(unittest.TestCase):
@@ -28,6 +28,11 @@ class ScannedPdfParsingTests(unittest.TestCase):
         questions = split_ocr_questions(["Cau hoi 2o7. Cau hoi ve ham."])
 
         self.assertEqual(questions, [(207, "Cau hoi 2o7. Cau hoi ve ham.")])
+
+    def test_extracts_answer_marker_from_scanned_table_row(self):
+        raw = "Cau hoi 8. Cau hoi?\na\nGiai thich dap an.\na) Lua chon A"
+
+        self.assertEqual(extract_ocr_answer(raw), "A")
 
 
 if __name__ == "__main__":

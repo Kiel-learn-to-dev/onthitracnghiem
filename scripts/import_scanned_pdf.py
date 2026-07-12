@@ -47,6 +47,15 @@ def split_ocr_questions(lines: list[str]) -> list[tuple[int, str]]:
     return results
 
 
+def extract_ocr_answer(raw_question: str) -> str | None:
+    """Read the separate A-D answer cell emitted by the scanned-table OCR."""
+    for line in raw_question.splitlines()[1:4]:
+        marker = line.strip().upper()
+        if marker in {"A", "B", "C", "D"}:
+            return marker
+    return None
+
+
 def _checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

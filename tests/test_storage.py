@@ -30,7 +30,12 @@ class StorageSchemaTests(unittest.TestCase):
                     row[1]
                     for row in connection.execute("PRAGMA table_info(source_questions)")
                 }
-                self.assertTrue({"difficulty", "tag_status", "tag_reason"}.issubset(source_columns))
+                self.assertTrue(
+                    {
+                        "difficulty", "tag_status", "tag_reason", "proposed_answer",
+                        "solution", "answer_status", "answer_reason",
+                    }.issubset(source_columns)
+                )
                 with self.assertRaises(sqlite3.IntegrityError):
                     connection.execute(
                         "INSERT INTO canonical_questions "
