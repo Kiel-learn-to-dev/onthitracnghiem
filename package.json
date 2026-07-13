@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "scripts": {
+    "build:css": "npx @tailwindcss/cli -i ./frontend/styles.css -o ./static/styles.css --minify",
+    "build:js": "npx tsc",
+    "build": "npm run build:css && npm run build:js"
+  },
+  "devDependencies": {
+    "@axe-core/cli": "^4.12.1",
+    "@tailwindcss/cli": "^4.1.13",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2"
+  }
+}

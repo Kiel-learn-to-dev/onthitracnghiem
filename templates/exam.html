@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Làm bài | CSLT{% endblock %}
+{% block content %}
+<section class="exam-layout" aria-label="Làm bài trắc nghiệm">
+  <aside class="exam-sidebar" aria-label="Điều hướng câu hỏi">
+    <div><p class="eyebrow">Đề 40 câu</p><p id="progress-text" class="progress-text">Đang tải đề…</p><p id="exam-timer" class="exam-timer" aria-live="polite">30:00</p></div>
+    <div id="question-nav" class="question-nav" aria-label="Danh sách câu hỏi"></div>
+    <button id="submit-exam" class="button button-primary" type="button">Nộp bài</button>
+  </aside>
+  <section class="exam-content" aria-busy="true">
+    <div class="exam-meta"><span id="question-topic"></span></div>
+    <h1 id="question-title" tabindex="-1">Đang tải câu hỏi…</h1>
+    <p id="question-assumptions" class="assumptions" hidden></p>
+    <fieldset id="choices" class="choices" disabled><legend class="sr-only">Chọn đáp án</legend></fieldset>
+    <div class="exam-actions"><button id="previous-question" class="button button-secondary" type="button">Câu trước</button><button id="mark-review" class="button button-secondary" type="button">Đánh dấu xem lại</button><button id="next-question" class="button button-secondary" type="button">Câu tiếp</button></div>
+  </section>
+</section>
+<dialog id="submit-dialog" aria-labelledby="submit-title"><h2 id="submit-title">Nộp bài?</h2><p id="submit-summary"></p><form method="dialog"><button class="button button-secondary" value="cancel">Tiếp tục làm</button><button id="confirm-submit" class="button button-primary" value="confirm">Nộp bài</button></form></dialog>
+{% endblock %}

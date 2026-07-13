@@ -1,123 +1,166 @@
-# Danh sách công việc: Ngân hàng ôn tập Cơ sở lập trình
+# Danh sách công việc — webapp ôn thi Cơ sở lập trình
 
-## Giai đoạn 1 — Thiết lập dữ liệu
+## Task 1: Bổ sung dependency và kiểm tra pipeline nhập liệu
 
-## Task 1: Tạo cấu trúc dự án và schema SQLite
+**Description:** Đóng gói môi trường Python tái lập được, gồm `pypdf`, và xác nhận các importer chạy được từ đầu đến cuối.
 
 **Acceptance criteria:**
-- [ ] Có schema cho nguồn, câu nguồn, câu chuẩn và lịch sử cập nhật.
-- [ ] Ràng buộc mức độ và trạng thái không cho phép giá trị ngoài quy ước.
-- [ ] Database tạo lại được từ một lệnh duy nhất.
+- [ ] Có file dependency/lock phù hợp cho các script nhập liệu và test.
+- [ ] `python -m unittest discover -s tests -v` chạy không lỗi import.
+- [ ] Không thay đổi dữ liệu nguồn trong quá trình test.
 
-**Verification:** kiểm tra schema và chèn thử một bản ghi hợp lệ/không hợp lệ.
+**Verification:** chạy toàn bộ test và rebuild database vào đường dẫn tạm.
 
 **Dependencies:** None
 
-## Task 2: Nhập và kiểm tra file Excel
+**Estimated scope:** Small
+
+## Task 2: Tách và lưu phương án A–D cho 516 câu PDF
+
+**Description:** Mở rộng parser PDF/OCR để lưu bốn phương án có thứ tự, vị trí nguồn và độ tin cậy thay vì danh sách lựa chọn rỗng.
 
 **Acceptance criteria:**
-- [ ] Nhập đủ 200 câu, 4 đáp án, đáp án đúng và giải thích.
-- [ ] Giữ đúng tiếng Việt, code block và chủ đề nguồn.
+- [ ] Mỗi câu PDF có đúng 4 lựa chọn A–D hoặc được đưa vào `review_queue` kèm lý do.
+- [ ] Không ghi đè câu Excel đã có phương án chuẩn.
+- [ ] Lưu được trang/số câu để đối chiếu tài liệu gốc.
 
-**Verification:** đối chiếu số dòng và 10 câu ngẫu nhiên với workbook.
+**Verification:** báo cáo số câu có 4 lựa chọn theo từng nguồn; kiểm tra trực quan mẫu đầu/cuối và các câu có code.
 
 **Dependencies:** Task 1
 
-## Task 3: Trích xuất ba PDF và OCR PDF ảnh
+**Estimated scope:** Medium
+
+## Task 3: Chuẩn hóa canonical, phát hiện trùng gần và bảo toàn provenance
+
+**Description:** Tạo canonical cho 516 câu còn thiếu, liên kết tất cả source record và xếp các cặp nghi trùng vào hàng đợi duyệt.
 
 **Acceptance criteria:**
-- [ ] Có 225, 241 và 50 lượt câu tương ứng với ba PDF.
-- [ ] Mỗi câu có định danh trang/thứ tự và cờ độ tin cậy trích xuất.
-- [ ] Tất cả trang OCR có độ tin cậy thấp được đưa vào danh sách kiểm tra trực quan.
+- [ ] 716/716 source record có `canonical_id`.
+- [ ] Câu trùng không làm mất nguồn/trang/số thứ tự.
+- [ ] Có báo cáo exact/near duplicate để quản trị quyết định gộp.
 
-**Verification:** đối chiếu tổng 516 lượt PDF và xem lại mẫu đầu/cuối của mỗi tài liệu.
+**Verification:** truy vấn linkage bằng 0 câu chưa liên kết; kiểm tra 10 cặp nghi trùng.
 
-**Dependencies:** Task 1
+**Dependencies:** Task 2
 
-## Checkpoint: Nguồn dữ liệu
+**Estimated scope:** Medium
 
-- [ ] Database chứa đúng 716 lượt câu nguồn.
-- [ ] Không có bản ghi thiếu câu hỏi hoặc thiếu tập phương án mà không được gắn cờ.
+## Checkpoint: Cấu trúc ngân hàng
 
-## Giai đoạn 2 — Chuẩn hóa và giải chi tiết
+- [ ] Mọi candidate có nội dung, 4 lựa chọn và provenance.
+- [ ] Không có importer/test nào phụ thuộc môi trường cục bộ chưa khai báo.
 
-## Task 4: Chuẩn hóa, gộp câu trùng và gắn chủ đề
+## Task 4: Duyệt đáp án, lời giải và các câu OCR
+
+**Description:** Xử lý 51 câu có đáp án `needs_review`, xác minh 225 câu OCR bằng ảnh gốc và gắn cờ câu phụ thuộc compiler/undefined behavior.
 
 **Acceptance criteria:**
-- [ ] Không mất câu nguồn; mọi bản ghi có liên kết câu chuẩn.
-- [ ] Các câu trùng exact được gộp lời giải nhưng vẫn giữ nguồn.
-- [ ] Câu nghi ngờ trùng được ghi cờ để quyết định thủ công.
+- [ ] Không còn candidate phát hành có `answer_status = needs_review` hoặc `extraction_status = needs_review`.
+- [ ] Mọi đáp án là A–D và có lời giải không rỗng.
+- [ ] Câu cần giả định môi trường có ghi chú hoặc bị loại khỏi đề chuẩn.
 
-**Verification:** báo cáo số nguồn, số câu chuẩn, số exact duplicate và số cần rà soát.
+**Verification:** báo cáo trạng thái đáp án/trích xuất; review ngẫu nhiên tối thiểu 10% mỗi nguồn.
 
 **Dependencies:** Task 2, Task 3
 
-## Task 5: Giải và lưu theo lô có checkpoint
+**Estimated scope:** Medium
+
+## Task 5: Kiểm duyệt chủ đề, độ khó và mở pool phát hành
+
+**Description:** Hoàn thiện taxonomy, duyệt tag độ khó và chuyển các câu đủ điều kiện sang `approved`.
 
 **Acceptance criteria:**
-- [ ] Mỗi câu hoàn thành được lưu ngay kèm đáp án, lời giải, tag độ khó và trạng thái.
-- [ ] Câu về code có ghi rõ giả định runtime/compiler khi cần.
-- [ ] Lô kế tiếp chỉ bắt đầu sau khi kiểm tra dữ liệu lô trước.
+- [ ] Mỗi câu approved có một chủ đề và một độ khó đã duyệt.
+- [ ] Pool approved có tối thiểu 120 Dễ, 80 Vừa, 80 Khó, 120 Rất khó.
+- [ ] Có báo cáo coverage theo chủ đề/độ khó và hàng đợi thiếu dữ liệu.
 
-**Verification:** sau từng lô, truy vấn số `approved`, kiểm tra mẫu lời giải và chạy kiểm tra trùng/thiếu.
+**Verification:** truy vấn distribution; review độc lập một mẫu mỗi chủ đề/độ khó.
 
 **Dependencies:** Task 4
 
-## Task 6: Rà soát độc lập đáp án và phân bố độ khó
+**Estimated scope:** Medium
+
+## Checkpoint: 10 đề chuẩn khả thi
+
+- [ ] Bộ chọn tạo được 10 tập không giao nhau, mỗi tập 40 câu đúng 12/8/8/12.
+- [ ] Không câu nào chưa approved xuất hiện trong tập thử.
+
+## Task 6: Thiết kế migration và bộ tạo đề có thể tái lập
+
+**Description:** Thêm schema đề/phiên làm bài và service chọn câu theo seed, blueprint, chủ đề, trạng thái phát hành.
 
 **Acceptance criteria:**
-- [ ] 100% câu chuẩn được kiểm tra đáp án/lời giải.
-- [ ] Mỗi câu có đúng một tag Dễ, Vừa, Khó hoặc Rất khó.
-- [ ] Mỗi nhóm có đủ câu để tạo đề 12/16/12.
+- [ ] Lưu snapshot ID câu hỏi, thứ tự và seed cho từng đề.
+- [ ] Không lặp canonical ID trong một đề.
+- [ ] Thiếu pool trả lỗi có số câu thiếu theo từng bucket, không tự phá tỷ lệ.
 
-**Verification:** báo cáo phân bố và test tạo 100 đề không lặp câu nội bộ.
+**Verification:** unit test tạo 100 đề; test thiếu dữ liệu cho từng bucket.
 
 **Dependencies:** Task 5
 
-## Checkpoint: Ngân hàng đã duyệt
+**Estimated scope:** Medium
 
-- [ ] Không còn câu `pending`, `drafted` hoặc `reviewed` trong tập xuất bản.
-- [ ] Không có lời giải trống, đáp án ngoài A-D hoặc độ khó không hợp lệ.
+## Task 7: Xây API tạo đề, lưu bài làm và chấm điểm
 
-## Giai đoạn 3 — PDF và web
-
-## Task 7: Tạo PDF ôn tập từ database
+**Description:** Cài API server-side cho lifecycle tạo đề → trả câu hỏi → lưu đáp án → nộp → xem kết quả.
 
 **Acceptance criteria:**
-- [ ] PDF có câu hỏi, đáp án và lời giải theo chủ đề/độ khó.
-- [ ] Mã C/C++ và tiếng Việt hiển thị rõ, không bị cắt trang.
+- [ ] Payload trước nộp không chứa đáp án/lời giải.
+- [ ] Nộp bài chấm chính xác và idempotent.
+- [ ] Attempt lưu được điểm, thời gian và đáp án đã chọn.
 
-**Verification:** render, xem trang đầu/cuối và các trang chứa code dài.
+**Verification:** integration test cho toàn bộ lifecycle và kiểm tra payload trước/sau nộp.
 
 **Dependencies:** Task 6
 
-## Task 8: Xuất JSON cho app và kiểm tra hợp đồng dữ liệu
+**Estimated scope:** Medium
+
+## Task 8: Xây app shell laptop-first và màn làm bài
+
+**Description:** Tạo giao diện FastAPI template + TypeScript ES modules theo `tasks/ui-design.md`; không dùng React/UI runtime. Tối ưu laptop 1024px+, tải trước 40 câu và điều hướng cục bộ.
 
 **Acceptance criteria:**
-- [ ] JSON chỉ chứa câu `approved` và không lộ đáp án trước khi người học nộp bài.
-- [ ] Dữ liệu có đủ chủ đề, mức độ, phương án, đáp án và lời giải sau khi chấm.
+- [ ] Layout hai cột hoạt động tại 1280–1440px; panel điều hướng thu gọn đúng tại 1024–1199px.
+- [ ] Chọn đáp án/câu chuyển trong <100ms không cần gọi mạng; autosave debounce 400ms có trạng thái thành công/lỗi/retry.
+- [ ] Có keyboard navigation, focus management, skip link, modal nộp bài và trạng thái tải/lỗi/trống rõ ràng.
+- [ ] Màn hình hẹp hơn 1024px báo yêu cầu dùng laptop, không cố tạo mobile layout.
 
-**Verification:** JSON schema validation và kiểm tra số lượng khớp database.
+**Verification:** browser end-to-end test cho một attempt 40 câu tại 1024px, 1280px, 1440px; Tab/keyboard walkthrough và axe-core.
 
-**Dependencies:** Task 6
+**Dependencies:** Task 7
 
-## Task 9: Xây dựng HTML app luyện trắc nghiệm
+**Estimated scope:** Medium
 
-**Acceptance criteria:**
-- [ ] Tạo đúng 40 câu theo tỷ lệ 12 Dễ / 16 Vừa+Khó / 12 Rất khó.
-- [ ] Có chọn đáp án, điều hướng, tiến độ, nộp bài, điểm và lời giải.
-- [ ] Không có câu chuẩn lặp trong cùng đề; thông báo rõ nếu dữ liệu chưa đủ.
+## Task 9: Xây kết quả, quản trị tối giản và phát hành 10 đề chuẩn
 
-**Verification:** unit test bộ chọn đề và kiểm tra luồng làm đề trong trình duyệt.
-
-**Dependencies:** Task 8
-
-## Task 10: Kiểm tra và bàn giao
+**Description:** Tạo màn duyệt dữ liệu có audit, hàng đợi review và thao tác tạo/publish đề cố định.
 
 **Acceptance criteria:**
-- [ ] Kiểm tra import, database, generator đề, PDF và app đều đạt.
-- [ ] Có hướng dẫn ngắn để cập nhật dữ liệu, sinh lại PDF/JSON và mở app.
+- [ ] Mọi thay đổi câu/đáp án/độ khó có audit trail.
+- [ ] Quản trị publish được 10 đề không lặp nhau.
+- [ ] Học viên không thể truy cập thao tác quản trị.
+- [ ] Kết quả dùng HTML/CSS progress bars, không thêm chart library; review câu dùng deep link theo số câu.
+- [ ] Table quản trị phân trang server-side 25–50 hàng, không tải toàn bộ ngân hàng vào DOM.
 
-**Verification:** chạy toàn bộ test, mở app từ đầu tới cuối và đối chiếu PDF với database.
+**Verification:** role-based integration test; kiểm tra 10 đề đã publish với blueprint; performance test danh sách quản trị và review kết quả.
 
-**Dependencies:** Task 7, Task 9
+**Dependencies:** Task 5, Task 7
+
+**Estimated scope:** Medium
+
+## Task 10: Kiểm thử, sao lưu và bàn giao
+
+**Description:** Hoàn tất quality gate, hướng dẫn vận hành và cơ chế backup/restore database.
+
+**Acceptance criteria:**
+- [ ] Unit, integration và end-to-end tests đều chạy trong môi trường sạch.
+- [ ] Có hướng dẫn import, duyệt, tạo đề, backup và restore.
+- [ ] Có smoke test sau deploy và quy trình rollback.
+- [ ] JavaScript/CSS/payload đề đạt ngân sách hiệu năng trong `tasks/plan.md`.
+- [ ] Axe không còn lỗi critical/serious; kiểm tra keyboard tại 1024px, 1280px và 1440px.
+
+**Verification:** chạy full test/build, restore database bản sao và thực hiện một attempt hoàn chỉnh.
+
+**Dependencies:** Task 8, Task 9
+
+**Estimated scope:** Medium

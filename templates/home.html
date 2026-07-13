@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Bắt đầu ôn thi | CSLT{% endblock %}
+{% block content %}
+<section class="landing" aria-labelledby="page-title">
+  <p class="eyebrow">Cơ sở lập trình</p>
+  <h1 id="page-title">Luyện đề 40 câu, đúng tỷ lệ đã duyệt.</h1>
+  <p class="lede">Mỗi lượt đề gồm 12 câu Dễ, 8 câu Vừa, 8 câu Khó và 12 câu Rất khó. Thời gian làm bài là 30 phút; đáp án và lời giải chỉ hiện sau khi nộp.</p>
+  <div class="blueprint" aria-label="Cấu trúc đề"><span>12 Dễ</span><span>8 Vừa</span><span>8 Khó</span><span>12 Rất khó</span></div>
+  <section class="exam-picker" aria-labelledby="published-exams-title">
+    <div class="section-heading"><div><h2 id="published-exams-title">Chọn đề có sẵn</h2><p>10 đề chuẩn đã được tạo sẵn.</p></div><button id="random-published-exam" class="button button-secondary" type="button">Bốc ngẫu nhiên 1 đề</button></div>
+    <div id="published-exams" class="published-exams" aria-busy="true"></div>
+  </section>
+  <div class="random-exam"><div><h2>Đề ngẫu nhiên mới</h2><p>Trộn lại câu hỏi sạch thành một đề 40 câu khác.</p></div><button id="start-exam" class="button button-primary" type="button">Tạo đề ngẫu nhiên</button></div>
+  <p id="home-status" class="status-message" aria-live="polite"></p>
+</section>
+{% endblock %}

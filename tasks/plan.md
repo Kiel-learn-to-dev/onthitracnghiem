@@ -1,90 +1,166 @@
-# Kế hoạch triển khai: Ngân hàng ôn tập Cơ sở lập trình
+# Kế hoạch triển khai webapp ôn thi trắc nghiệm — Cơ sở lập trình
 
 ## Mục tiêu
 
-Xây dựng một nguồn dữ liệu chuẩn duy nhất để lưu, giải chi tiết và phân loại toàn bộ 716 lượt câu hỏi hiện có. Từ nguồn này sẽ sinh ra (1) PDF ôn tập có lời giải và (2) HTML app chạy cục bộ để tạo đề 40 câu, làm bài, chấm điểm và xem lời giải.
+Xây dựng webapp ôn thi cho môn **Cơ sở lập trình**, tạo đề 40 câu theo blueprint cố định:
 
-## Phạm vi dữ liệu ban đầu
+| Nhóm độ khó | Số câu/đề | Tỷ lệ |
+| --- | ---: | ---: |
+| Dễ | 12 | 30% |
+| Vừa + Khó | 16 | 40% |
+| Rất khó | 12 | 30% |
 
-| Nguồn | Lượt câu hỏi | Cách đọc |
-| --- | ---: | --- |
-| `200_cau_hoi_CSLT.xlsx` | 200 | Bảng câu hỏi, đáp án và giải thích sẵn có |
-| `Câu hỏi ôn tập-e.pdf` | 225 | PDF ảnh, cần OCR và kiểm tra thủ công |
-| `đề 1.pdf` | 241 | PDF có lớp văn bản; vẫn có câu nhãn trùng cần chuẩn hóa |
-| `đề 2.pdf` | 50 | Đề thi 50 câu |
-| **Tổng** | **716** | Chưa loại trùng giữa các nguồn |
+Mặc định, 16 câu ở nhóm giữa được chia thành 8 câu Vừa và 8 câu Khó. Chỉ được bù giữa hai mức này khi dữ liệu sau lọc không đủ; lần bù phải được ghi lại trong đề để kiểm tra.
 
-## Quyết định kiến trúc
+## Kết quả kiểm kê database (13/07/2026)
 
-- **SQLite (`data/review.db`)** là nguồn dữ liệu gốc: không cần máy chủ, có giao dịch an toàn và phù hợp với việc cập nhật từng câu.
-- Bảng `source_questions` bảo toàn từng lượt câu theo tài liệu gốc. Bảng `canonical_questions` chứa nội dung chuẩn hóa và lời giải dùng chung cho các câu trùng; `source_questions.canonical_id` liên kết tới nó.
-- Mọi lần giải được ghi ngay trong một giao dịch SQLite: nội dung câu, đáp án, lời giải, mức độ, giả định môi trường chạy code, trạng thái kiểm duyệt và thời điểm cập nhật.
-- HTML là static app, nạp `web/data/questions.json` được sinh từ các câu có trạng thái `approved`; không truy cập SQLite trực tiếp từ trình duyệt.
-- PDF được sinh từ truy vấn SQLite đã duyệt, có mục lục/chủ đề, đáp án và lời giải chi tiết.
+### Nguồn và liên kết dữ liệu
 
-## Mô hình dữ liệu tối thiểu
+| Nguồn | Lượt câu | Đã liên kết canonical | Ghi chú |
+| --- | ---: | ---: | --- |
+| `200_cau_hoi_CSLT.xlsx` | 200 | 200 | Đủ 4 phương án, đáp án và giải thích |
+| `đề 1.pdf` | 241 | 0 | Đã tách câu; chưa tách phương án |
+| `đề 2.pdf` | 50 | 0 | Đã tách câu; chưa tách phương án |
+| `Câu hỏi ôn tập-e.pdf` | 225 | 0 | OCR; còn cần duyệt trích xuất |
+| **Tổng** | **716** | **200** | **516 câu cần chuẩn hóa thành canonical** |
+
+- 716 câu có nội dung câu hỏi khác nhau khi so khớp chính xác trên văn bản đã chuẩn hóa. So khớp gần (near-duplicate) chưa thực hiện.
+- Chưa có câu nào `approved`; 200 canonical hiện đều `drafted`. Vì vậy pool được phép phát hành hiện là **0 câu**.
+- 665/716 câu có trạng thái đáp án `extracted` hoặc `solved`; 51 câu còn `needs_review`.
+- 491/716 câu có trạng thái trích xuất `extracted`; toàn bộ 225 câu từ PDF OCR còn `needs_review`.
+- Chỉ 200/716 câu có đúng 4 phương án lựa chọn có thể dùng ngay. 516 câu PDF hiện lưu danh sách phương án rỗng; cần tách lại A–D và duyệt đối chiếu bản gốc.
+
+### Phân bố độ khó hiện tại
+
+| Độ khó | Số câu thô đã gắn tag |
+| --- | ---: |
+| Dễ | 151 |
+| Vừa | 236 |
+| Khó | 201 |
+| Rất khó | 128 |
+| **Tổng** | **716** |
+
+Các tag từ PDF đang là `rule_based`, chưa thay thế cho đánh giá chuyên môn. Tag từ Excel được giữ theo nguồn. Cần duyệt lại các tag trước khi dùng làm đề chính thức.
+
+## Số lượng đề đề xuất
+
+### Đề chuẩn không lặp câu
+
+Sau khi mọi câu được chuẩn hóa, xác minh và `approved`, ngân hàng hiện tại đủ để phát hành **10 đề chuẩn 40 câu không lặp câu giữa các đề**:
+
+- 10 × 12 câu Dễ = 120 câu (còn 31 câu Dễ).
+- 10 × 16 câu Vừa + Khó = 160 câu (còn 277 câu nhóm giữa).
+- 10 × 12 câu Rất khó = 120 câu (còn 8 câu Rất khó).
+
+Nhóm **Rất khó (128 câu)** là nút thắt: `floor(128 / 12) = 10`. Không nên hứa hơn 10 đề chuẩn không lặp câu trước khi bổ sung tối thiểu 4 câu Rất khó đã duyệt cho đề thứ 11, hoặc thay đổi blueprint.
+
+### Chế độ random
+
+Ngoài 10 đề chuẩn có mã đề cố định, webapp có thể tạo nhiều phiên random từ cùng ngân hàng. Câu có thể lặp giữa các lần làm khác nhau, nhưng không được lặp trong một đề. Cần hiển thị mã đề, seed và snapshot ID để tái lập chính xác phiên làm bài khi cần phúc khảo.
+
+## Quy tắc dữ liệu trước khi phát hành
+
+Một câu chỉ được vào pool thi khi đồng thời có:
+
+1. Nội dung câu hỏi và đúng 4 lựa chọn A–D không rỗng.
+2. Một đáp án A–D đã xác minh; nếu có xung đột giữa nguồn và lời giải thì chuyển `needs_review`.
+3. Lời giải ngắn, có thể hiểu độc lập; với C/C++ phải ghi rõ giả định compiler/chuẩn/ngữ cảnh khi cần.
+4. Một chủ đề và một độ khó đã được duyệt thủ công.
+5. Liên kết `canonical_question` và ít nhất một nguồn gốc (tài liệu, trang, số thứ tự).
+6. `solution_status = approved`; câu OCR cần duyệt hình gốc trước khi đạt trạng thái này.
+
+## Kiến trúc đề xuất
 
 ```text
-sources(id, filename, kind, imported_at, checksum)
-source_questions(id, source_id, source_label, page, ordinal, raw_question,
-                 raw_choices_json, canonical_id, extraction_status)
-canonical_questions(id, content_hash, question, choices_json, answer,
-                    explanation, topic, difficulty, assumptions,
-                    solution_status, reviewed_at, updated_at)
-solution_audit(id, canonical_id, action, before_json, after_json, created_at)
+Tài liệu nguồn -> import/OCR -> source_questions (provenance)
+                              -> canonical_questions (đã duyệt)
+                              -> API tạo đề/chấm điểm
+                              -> webapp học viên + trang quản trị
 ```
 
-`difficulty` chỉ nhận `Dễ | Vừa | Khó | Rất khó`; `solution_status` chỉ nhận `pending | drafted | reviewed | approved`.
+- Duy trì SQLite là nguồn sự thật; giữ `source_questions` để truy vết, chỉ `canonical_questions` đã duyệt được phát hành.
+- Bổ sung các bảng `exam_blueprints`, `exam_instances`, `exam_instance_questions`, `attempts`, `attempt_answers` và `review_queue`.
+- Stack MVP nhẹ: **FastAPI + Jinja templates + TypeScript ES modules + Tailwind CSS biên dịch tĩnh**. Không dùng React, chart library, UI runtime hay ảnh trang trí; các control chỉ dùng HTML native và SVG icon nhất quán.
+- API phía máy chủ tạo đề và chấm điểm. Không đưa đáp án/lời giải vào payload trước khi nộp bài; frontend tĩnh chứa sẵn đáp án không phù hợp cho chế độ thi.
+- Giao diện gồm hai vai trò: học viên (làm đề, xem kết quả/lịch sử) và quản trị (duyệt dữ liệu, xem hàng đợi lỗi, tạo/publish đề).
 
-## Luồng xử lý và kiểm soát chất lượng
+## Blueprint nội dung và trải nghiệm
 
-1. Nhập dữ liệu từng nguồn, lưu nguyên văn và tọa độ nguồn (trang/thứ tự) trước khi chuẩn hóa.
-2. OCR 225 câu trong PDF ảnh; đối chiếu ảnh gốc ở các trang có độ tin cậy thấp.
-3. Chuẩn hóa câu hỏi, phương án, mã nguồn C/C++ và ký hiệu; phát hiện trùng exact/near-duplicate nhưng không xóa bản ghi nguồn.
-4. Giải theo từng câu chuẩn. Ngay sau khi hoàn tất một câu, lưu transaction vào SQLite; không chờ cả lô.
-5. Với câu tracing C/C++, ghi rõ tiêu chuẩn và môi trường cần thiết (C/C++, kích thước kiểu dữ liệu, compiler), đồng thời đánh dấu câu có undefined/implementation-defined behavior để lời giải không khẳng định sai.
-6. Gắn tag chủ đề và một mức độ. Có kiểm tra phân bố để bảo đảm đủ câu cho đề 40 câu.
-7. Rà soát độc lập đáp án, phương án nhiễu và lời giải; chỉ câu `approved` mới được xuất PDF/JSON.
+- Áp dụng tỷ lệ 12 Dễ / 8 Vừa / 8 Khó / 12 Rất khó; xác thực trước khi tạo đề.
+- Sau khi chủ đề PDF được chuẩn hóa, mỗi đề phải phủ tối thiểu 5 chủ đề và không quá 35% câu từ một chủ đề, trừ khi quản trị chọn chế độ ôn theo chủ đề.
+- Luôn lấy mẫu không hoàn lại theo `canonical_question.id`; lưu snapshot câu hỏi và thứ tự hiển thị vào `exam_instance`.
+- Cho phép trộn thứ tự câu và phương án nhưng không thay đổi nghĩa của câu (đặc biệt với “tất cả đáp án trên”).
+- Màn hình làm bài: đồng hồ tùy chọn, bảng điều hướng 40 câu, đánh dấu câu cần xem lại, tự lưu đáp án, nộp bài có xác nhận.
+- Màn hình kết quả: điểm, tỷ lệ theo độ khó/chủ đề, đáp án đúng, lời giải và danh sách cần ôn lại. Không công bố lời giải trước khi nộp.
 
-## Quy tắc tạo đề 40 câu
+## Thiết kế UI — laptop-first, nhẹ và mượt
 
-- 12 câu Dễ (30%).
-- 16 câu thuộc nhóm Vừa + Khó (40%); mặc định 8 Vừa và 8 Khó, nhưng có thể phân phối lại trong cùng nhóm nếu một mức không đủ câu.
-- 12 câu Rất khó (30%).
-- Không lặp `canonical_id` trong một đề; có thể lọc theo chủ đề.
-- Nếu một nhóm chưa có đủ câu `approved`, app báo rõ số câu còn thiếu thay vì tạo đề sai tỷ lệ.
+Thiết kế chi tiết nằm tại `tasks/ui-design.md`. Quyết định cốt lõi:
 
-## Lộ trình triển khai
+- Chỉ tối ưu cho viewport laptop từ **1024px**; ưu tiên 1280–1440px. Ở 1024–1199px, thanh điều hướng câu thu gọn thành panel mở bằng nút; không triển khai trải nghiệm mobile-first trong MVP.
+- Giao diện “quiet academic”: nền slate rất nhạt, chữ slate đậm, xanh dương làm màu hành động duy nhất; không gradient, không minh họa, không card/shadow dày, không emoji làm icon.
+- Dùng system font để không phát sinh tải font/CLS; font mono hệ thống chỉ cho code C/C++ và timer. Dùng SVG icon cùng một bộ khi thật sự cần.
+- Mỗi lần mở đề tải một payload chứa đủ 40 câu **không có đáp án/lời giải**, sau đó đổi câu tại client không gọi mạng. Chọn đáp án phản hồi ngay; autosave nền được debounce 400ms và có trạng thái “Đã lưu/Đang lưu/Lưu lỗi”.
+- Chỉ dùng chuyển màu/opacity 120–160ms; tôn trọng `prefers-reduced-motion`. Không có animation trang, biểu đồ hoặc hiệu ứng không phục vụ thao tác.
+- Mọi thao tác làm bài có thể dùng bàn phím: `1–4` chọn đáp án, mũi tên trái/phải chuyển câu, `R` đánh dấu xem lại (không kích hoạt khi đang focus vào input). Có focus ring, skip link, thứ tự Tab hợp lý và không dùng màu làm tín hiệu duy nhất.
 
-### Giai đoạn 1 — Dữ liệu và OCR
+### Ngân sách hiệu năng UI
 
-Tạo schema, nhập 716 lượt câu, OCR PDF ảnh, giữ liên kết về nguồn và tạo báo cáo thiếu/trùng.
+| Hạng mục | Mục tiêu MVP |
+| --- | --- |
+| JavaScript tải ban đầu | ≤ 80 KB gzip, không tính runtime trình duyệt |
+| CSS đã build | ≤ 25 KB gzip |
+| Payload một đề 40 câu | ≤ 150 KB nén, không có đáp án/lời giải |
+| Phản hồi chọn đáp án/chuyển câu | cập nhật UI trong <100 ms, không chờ API |
+| Tự lưu | debounce 400 ms, retry có kiểm soát khi lỗi mạng |
+| Hiệu ứng UI | chỉ `opacity`/`transform`, 120–160 ms hoặc tắt khi reduced motion |
 
-### Giai đoạn 2 — Lời giải và phân loại
+## Lộ trình theo lát dọc
 
-Giải theo lô nhỏ có checkpoint; mỗi câu lưu ngay vào DB với mức độ, chủ đề, đáp án và lời giải. Hoàn tất bằng rà soát các câu phụ thuộc compiler/undefined behavior.
+### Giai đoạn 1 — Hoàn thiện ngân hàng phát hành
 
-### Phạm vi dừng theo yêu cầu hiện tại
+1. Chuẩn hóa 516 câu PDF: tách A–D, khôi phục trang/số câu, tạo canonical và hàng đợi OCR.
+2. Đối chiếu 51 đáp án còn `needs_review`; phát hiện xung đột đáp án/lời giải.
+3. Gắn chủ đề đầy đủ, kiểm duyệt độ khó và phát hiện trùng gần.
+4. Chỉ chuyển `approved` khi đạt đủ 6 điều kiện phát hành; xuất báo cáo coverage theo chủ đề/độ khó.
 
-Sau khi database đủ 716 lượt câu và mọi lượt có tag độ khó, dừng công việc. Việc sinh PDF, JSON và HTML app được để lại cho kế hoạch riêng sau này.
+### Checkpoint dữ liệu
 
-## Rủi ro và phương án xử lý
+- Có ít nhất 120 Dễ, 80 Vừa, 80 Khó và 120 Rất khó đã `approved`, mỗi câu có 4 phương án.
+- Có thể tạo 10 đề không lặp câu và mọi đề đều đúng blueprint 12/8/8/12.
+- Báo cáo riêng các câu OCR, đáp án mâu thuẫn và câu phụ thuộc compiler/undefined behavior.
+
+### Giai đoạn 2 — Đề và API
+
+5. Thêm schema đề/phiên làm bài cùng migration có thể chạy lặp lại.
+6. Xây bộ tạo đề có seed, kiểm tra tỷ lệ/chủ đề/không lặp và thông báo thiếu pool rõ ràng.
+7. Cài API tạo đề, lưu đáp án, nộp bài và trả kết quả sau nộp.
+
+### Checkpoint luồng lõi
+
+- Test tạo 100 đề random: mỗi đề 40 câu, 12/8/8/12, không trùng ID nội bộ.
+- Cùng seed và snapshot luôn tái tạo cùng đề.
+- Không có API trước nộp trả đáp án hoặc lời giải.
+
+### Giai đoạn 3 — Webapp và quản trị
+
+8. Xây app shell laptop-first và luồng làm bài: chọn đề, tải trước 40 câu, tự lưu, bàn phím và nộp bài.
+9. Xây trang kết quả và màn quản trị tối giản: review queue, audit, tạo/publish 10 đề chuẩn.
+10. Kiểm thử end-to-end, ngân sách hiệu năng/accessibility, sao lưu SQLite và hướng dẫn vận hành.
+
+## Rủi ro và cách xử lý
 
 | Rủi ro | Tác động | Cách xử lý |
 | --- | --- | --- |
-| OCR sai PDF ảnh | Sai câu/đáp án | Lưu ảnh-trang tham chiếu, đánh dấu độ tin cậy, kiểm tra trực quan trước khi duyệt |
-| Câu trùng hoặc đánh số trùng | Lời giải bị lặp/sai nguồn | Bảo toàn bản ghi nguồn, dùng canonical question và content hash |
-| Code phụ thuộc Dev-C++/32-bit/UB | Đáp án không phổ quát | Ghi rõ giả định và kiểm chứng bằng compiler phù hợp; gắn cờ hành vi không xác định |
-| Thiếu câu Dễ/Vừa cho tỷ lệ đề | Không thể random đúng | Hoàn tất tagging toàn bộ trước khi mở app; app từ chối tạo đề sai tỷ lệ |
+| 516 câu PDF chưa có phương án A–D | Không thể phát hành đề đúng nghĩa trắc nghiệm | Ưu tiên parser/duyệt phương án trước UI |
+| 225 câu OCR chưa duyệt | Sai câu, mất ký tự code hoặc đáp án | Đối chiếu ảnh gốc; chỉ approved sau duyệt |
+| Tag độ khó tự động sai | Phân bố đề thiếu công bằng | Duyệt chuyên môn, lưu lý do/nguồn tag |
+| Code C/C++ phụ thuộc môi trường | Chấm sai hoặc lời giải gây tranh cãi | Nêu giả định; gắn cờ/loại câu UB khỏi đề chuẩn |
+| Thiếu dependency `pypdf` ở môi trường hiện tại | Bộ test import PDF không chạy đầy đủ | Khai báo dependency tái lập được và chạy test trong môi trường sạch |
+| UI nặng hoặc render giật khi làm bài | Mất tập trung, dễ chọn nhầm đáp án | Không dùng UI runtime; preload 40 câu; đo bundle và giữ thay đổi UI cục bộ |
 
-## Tiêu chí hoàn thành
+## Câu hỏi cần chốt trước khi code webapp
 
-- 716 lượt câu có mặt trong database và truy vết được về tài liệu/trang gốc.
-- Mọi câu chuẩn có đáp án, lời giải, chủ đề, đúng một tag độ khó và trạng thái `approved`.
-- PDF xuất được từ database, hiển thị đúng tiếng Việt/mã nguồn và có lời giải đầy đủ.
-- HTML app tạo đúng 40 câu với tỷ lệ 12/16/12, chấm điểm chính xác, hiện lời giải và không lặp câu trong đề.
-- Có kiểm tra tự động cho schema, import, phân bố đề, export JSON và thao tác app chính.
-
-## Điểm cần duyệt trước khi triển khai
-
-Kế hoạch coi 716 là các lượt câu theo nguồn; các câu giống nhau sẽ cùng dùng một lời giải chuẩn nhưng vẫn được giữ trong các tài liệu xuất bản phù hợp.
+1. Webapp chỉ dùng nội bộ một lớp hay cần tài khoản cho nhiều học viên/lớp?
+2. Có yêu cầu giới hạn thời gian, chống gian lận hoặc xuất PDF đề đáp án không?
+3. Ai là người duyệt độ khó/chủ đề cho các câu PDF trước khi publish?

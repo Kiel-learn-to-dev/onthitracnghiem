@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Kết quả | CSLT{% endblock %}
+{% block content %}
+<section class="result-exam-layout" aria-labelledby="result-title">
+  <aside class="exam-sidebar result-sidebar" aria-label="Điều hướng câu hỏi đã làm">
+    <div>
+      <p class="eyebrow">Kết quả & ôn lại</p>
+      <h1 id="result-title">Đang tải kết quả…</h1>
+      <p id="result-summary" class="progress-text"></p>
+    </div>
+    <div id="result-question-nav" class="question-nav" aria-label="Danh sách câu hỏi"></div>
+    <a class="button button-primary" href="/">Làm đề mới</a>
+  </aside>
+  <section class="result-workspace">
+    <section class="exam-content result-question-content" aria-labelledby="result-question-heading">
+      <div class="exam-meta"><span id="result-question-topic"></span><span id="result-question-status"></span></div>
+      <h2 id="result-question-heading" tabindex="-1">Đang tải câu hỏi…</h2>
+      <p id="result-question-text" class="result-question"></p>
+      <ol id="result-question-choices" class="review-choices" aria-label="Các lựa chọn"></ol>
+    </section>
+    <aside id="result-explanation" class="review-explanation" aria-live="polite"></aside>
+  </section>
+</section>
+{% endblock %}

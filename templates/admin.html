@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Quản trị | CSLT{% endblock %}
+{% block content %}
+<section class="admin" aria-labelledby="admin-title"><p class="eyebrow">Quản trị</p><h1 id="admin-title">Ngân hàng câu hỏi</h1><p class="lede">Nhập mã quản trị để xem dữ liệu đã duyệt.</p><label for="admin-token">Mã quản trị</label><div class="admin-login"><input id="admin-token" type="password" autocomplete="off"><button id="load-admin" class="button button-primary" type="button">Mở danh sách</button><button id="publish-exams" class="button button-secondary" type="button">Publish 10 đề chuẩn</button></div><p id="admin-status" class="status-message" aria-live="polite"></p><div id="admin-table"></div></section>
+{% endblock %}

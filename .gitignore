@@ -4,5 +4,12 @@ __pycache__/
 .pytest_cache/
 data/*.db
 data/*.db-*
+data/*.bak*
 web/data/*.json
 output/
+node_modules/
+build/
+dist/
+pdf_images/
+.env
+.env.local

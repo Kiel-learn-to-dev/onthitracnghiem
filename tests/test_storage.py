@@ -33,7 +33,8 @@ class StorageSchemaTests(unittest.TestCase):
                 self.assertTrue(
                     {
                         "difficulty", "tag_status", "tag_reason", "proposed_answer",
-                        "solution", "answer_status", "answer_reason",
+                        "solution", "answer_status", "answer_reason", "normalized_question",
+                        "choice_parse_reason",
                     }.issubset(source_columns)
                 )
                 with self.assertRaises(sqlite3.IntegrityError):
@@ -44,6 +45,46 @@ class StorageSchemaTests(unittest.TestCase):
                     )
             finally:
                 connection.close()
+
+    def test_persists_schema_upgrades_for_a_preexisting_database(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "review.db"
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.execute(
+                    """
+                    CREATE TABLE canonical_questions (
+                        id INTEGER PRIMARY KEY,
+                        content_hash TEXT,
+                        question TEXT NOT NULL,
+                        choices_json TEXT NOT NULL,
+                        answer TEXT NOT NULL,
+                        explanation TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        difficulty TEXT NOT NULL,
+                        assumptions TEXT,
+                        solution_status TEXT NOT NULL DEFAULT 'pending',
+                        reviewed_at TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            create_database(db_path)
+
+            connection = sqlite3.connect(db_path)
+            try:
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(canonical_questions)")
+                }
+            finally:
+                connection.close()
+
+        self.assertIn("is_publishable", columns)
 
     def test_imports_all_excel_questions_with_explanations(self):
         workbook = Path(__file__).parent.parent / "200_cau_hoi_CSLT.xlsx"

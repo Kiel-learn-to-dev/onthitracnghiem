@@ -1,0 +1,7 @@
+-r requirements.txt
+py2app>=0.28,<1.0
+pyobjc-core; sys_platform == 'darwin'
+pyobjc-framework-Cocoa; sys_platform == 'darwin'
+pyobjc-framework-Quartz; sys_platform == 'darwin'
+pyobjc-framework-WebKit; sys_platform == 'darwin'
+pyobjc-framework-security; sys_platform == 'darwin'
