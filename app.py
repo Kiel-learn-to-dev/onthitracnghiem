@@ -17,11 +17,20 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from scripts.exams import InsufficientPoolError, create_exam_instance, publish_standard_exams
+from scripts.storage import create_database
 
 
 class CreateAttemptInput(BaseModel):
     seed: str | None = Field(default=None, min_length=1, max_length=128)
     examInstanceId: str | None = Field(default=None, min_length=1, max_length=64)
+    mode: Literal["exam", "study"] = "exam"
+    subjectSlug: str | None = Field(default=None, min_length=1, max_length=64)
+    questionCount: int | None = Field(default=None, ge=1, le=200)
+    timeLimitSeconds: int | None = Field(default=None, ge=60, le=14400)
+    chapters: list[str] | None = None
+    topics: list[str] | None = None
+    difficulties: list[Literal["Dễ", "Vừa", "Khó", "Rất khó"]] | None = None
+    questionTypes: list[str] | None = None
 
 
 class SaveAnswerInput(BaseModel):
@@ -52,17 +61,28 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
-def _public_question(snapshot: dict[str, Any], position: int, answer: sqlite3.Row | None) -> dict[str, Any]:
-    return {
+def _public_question(snapshot: dict[str, Any], position: int, answer: sqlite3.Row | None, reveal_answer: bool = False) -> dict[str, Any]:
+    question = {
         "position": position,
         "question": snapshot["question"],
         "choices": snapshot["choices"],
         "topic": snapshot["topic"],
+        "chapter": snapshot.get("chapter"),
+        "questionType": snapshot.get("questionType"),
         "difficulty": snapshot["difficulty"],
         "assumptions": snapshot["assumptions"],
         "selectedAnswer": answer["selected_answer"] if answer else None,
         "markedForReview": bool(answer["marked_for_review"]) if answer else False,
     }
+    if reveal_answer:
+        question.update(
+            {
+                "correctAnswer": snapshot["correctAnswer"],
+                "explanation": snapshot["explanation"],
+                "isCorrect": answer is not None and answer["selected_answer"] == snapshot["correctAnswer"],
+            }
+        )
+    return question
 
 
 def _iso_timestamp(timestamp: str | None) -> str | None:
@@ -89,27 +109,32 @@ def _attempt_payload(connection: sqlite3.Connection, attempt_id: str, include_re
     questions = []
     for row in rows:
         snapshot = json.loads(row["snapshot_json"])
-        question = _public_question(snapshot, int(row["position"]), row)
-        if include_results:
-            question.update(
-                {
-                    "correctAnswer": snapshot["correctAnswer"],
-                    "explanation": snapshot["explanation"],
-                    "isCorrect": row["selected_answer"] == snapshot["correctAnswer"],
-                }
-            )
+        reveal_answer = include_results or (attempt["mode"] == "study" and row["selected_answer"] is not None)
+        question = _public_question(snapshot, int(row["position"]), row, reveal_answer)
         questions.append(question)
     payload: dict[str, Any] = {
         "attemptId": attempt["id"],
         "examInstanceId": attempt["exam_instance_id"],
+        "mode": attempt["mode"],
         "status": attempt["status"],
         "startedAt": _iso_timestamp(attempt["started_at"]),
         "deadlineAt": _iso_timestamp(attempt["deadline_at"]),
         "timeLimitSeconds": attempt["time_limit_seconds"],
+        "totalQuestions": attempt["total_questions"],
         "questions": questions,
     }
     if include_results:
-        payload.update({"score": attempt["score"], "totalQuestions": attempt["total_questions"]})
+        correct_count = sum(1 for question in questions if question["selectedAnswer"] is not None and question.get("isCorrect"))
+        wrong_count = sum(1 for question in questions if question["selectedAnswer"] is not None and not question.get("isCorrect"))
+        unanswered_count = sum(1 for question in questions if question["selectedAnswer"] is None)
+        payload.update(
+            {
+                "score": attempt["score"],
+                "correctCount": correct_count,
+                "wrongCount": wrong_count,
+                "unansweredCount": unanswered_count,
+            }
+        )
     return payload
 
 
@@ -122,6 +147,7 @@ def create_app(db_path: Path | None = None, admin_token: str | None = None) -> F
         if configured_database
         else Path(__file__).resolve().parent / "data" / "review.db"
     )
+    create_database(database)
     expected_admin_token = admin_token if admin_token is not None else os.getenv("CSLT_ADMIN_TOKEN")
     app = FastAPI(title="CSLT Ôn thi", version="1.0.0")
     root = Path(__file__).resolve().parent
@@ -159,20 +185,125 @@ def create_app(db_path: Path | None = None, admin_token: str | None = None) -> F
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/api/exams/published")
-    def list_published_exams() -> dict[str, Any]:
+    @app.get("/api/subjects")
+    def list_subjects() -> dict[str, Any]:
         connection = _connection(database)
         try:
             rows = connection.execute(
                 """
-                SELECT id, created_at FROM exam_instances
-                WHERE status = 'published'
-                ORDER BY created_at, id
+                SELECT subjects.slug, subjects.title,
+                       COUNT(canonical_questions.id) AS question_count
+                FROM subjects
+                LEFT JOIN canonical_questions
+                  ON canonical_questions.subject_id = subjects.id
+                 AND canonical_questions.solution_status = 'approved'
+                 AND canonical_questions.is_publishable = 1
+                GROUP BY subjects.id, subjects.slug, subjects.title
+                ORDER BY subjects.title
                 """
             ).fetchall()
             return {
                 "data": [
-                    {"id": row["id"], "title": f"Đề {index:02}", "questionCount": 40}
+                    {
+                        "slug": row["slug"],
+                        "title": row["title"],
+                        "questionCount": row["question_count"],
+                    }
+                    for row in rows
+                ]
+            }
+        finally:
+            connection.close()
+
+    @app.get("/api/subjects/{subject_slug}/catalog")
+    def get_subject_catalog(subject_slug: str) -> dict[str, Any]:
+        connection = _connection(database)
+        try:
+            subject = connection.execute(
+                "SELECT id, slug, title FROM subjects WHERE slug = ?",
+                (subject_slug,),
+            ).fetchone()
+            if subject is None:
+                raise _error(404, "SUBJECT_NOT_FOUND", "Không tìm thấy môn học.")
+
+            def counts(field: str) -> list[dict[str, Any]]:
+                rows = connection.execute(
+                    f"""
+                    SELECT {field} AS value, COUNT(*) AS count
+                    FROM canonical_questions
+                    WHERE subject_id = ?
+                      AND solution_status = 'approved'
+                      AND is_publishable = 1
+                      AND {field} IS NOT NULL
+                      AND {field} != ''
+                    GROUP BY {field}
+                    ORDER BY {field}
+                    """,
+                    (subject["id"],),
+                ).fetchall()
+                return [{"value": row["value"], "count": row["count"]} for row in rows]
+
+            total = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM canonical_questions
+                WHERE subject_id = ?
+                  AND solution_status = 'approved'
+                  AND is_publishable = 1
+                """,
+                (subject["id"],),
+            ).fetchone()[0]
+            return {
+                "data": {
+                    "subject": {"slug": subject["slug"], "title": subject["title"]},
+                    "questionCount": total,
+                    "chapters": counts("chapter"),
+                    "topics": counts("topic"),
+                    "difficulties": counts("difficulty"),
+                    "questionTypes": counts("question_type"),
+                }
+            }
+        finally:
+            connection.close()
+
+    @app.get("/api/exams/published")
+    def list_published_exams(subjectSlug: str | None = Query(default=None, min_length=1, max_length=64)) -> dict[str, Any]:
+        connection = _connection(database)
+        try:
+            filters = ["exam_instances.status = 'published'"]
+            params: list[Any] = []
+            if subjectSlug:
+                filters.append("subjects.slug = ?")
+                params.append(subjectSlug)
+            rows = connection.execute(
+                f"""
+                SELECT exam_instances.id,
+                       exam_instances.title,
+                       exam_instances.created_at,
+                       subjects.slug AS subject_slug,
+                       subjects.title AS subject_title,
+                       COUNT(exam_instance_questions.position) AS question_count
+                FROM exam_instances
+                LEFT JOIN subjects ON subjects.id = exam_instances.subject_id
+                LEFT JOIN exam_instance_questions
+                  ON exam_instance_questions.exam_instance_id = exam_instances.id
+                WHERE {' AND '.join(filters)}
+                GROUP BY exam_instances.id, exam_instances.title, exam_instances.created_at, subjects.slug, subjects.title
+                ORDER BY exam_instances.created_at, exam_instances.id
+                """,
+                params,
+            ).fetchall()
+            return {
+                "data": [
+                    {
+                        "id": row["id"],
+                        "title": row["title"] or f"Đề {index:02}",
+                        "questionCount": row["question_count"],
+                        "subject": {
+                            "slug": row["subject_slug"] or "cslt",
+                            "title": row["subject_title"] or "Cơ sở lập trình",
+                        },
+                    }
                     for index, row in enumerate(rows, start=1)
                 ]
             }
@@ -199,6 +330,17 @@ def create_app(db_path: Path | None = None, admin_token: str | None = None) -> F
     def create_attempt(input_data: CreateAttemptInput) -> dict[str, Any]:
         if input_data.seed and input_data.examInstanceId:
             raise _error(422, "VALIDATION_ERROR", "Chỉ chọn seed hoặc đề đã publish.")
+        custom_fields = (
+            input_data.subjectSlug,
+            input_data.questionCount,
+            input_data.timeLimitSeconds,
+            input_data.chapters,
+            input_data.topics,
+            input_data.difficulties,
+            input_data.questionTypes,
+        )
+        if input_data.examInstanceId and any(value is not None for value in custom_fields):
+            raise _error(422, "VALIDATION_ERROR", "Đề đã publish không nhận thêm cấu hình tùy chỉnh.")
         if input_data.examInstanceId:
             connection = _connection(database)
             try:
@@ -214,21 +356,139 @@ def create_app(db_path: Path | None = None, admin_token: str | None = None) -> F
         else:
             seed = input_data.seed or str(uuid.uuid4())
             try:
-                instance_id = create_exam_instance(database, seed).id
+                instance_id = create_exam_instance(
+                    database,
+                    seed,
+                    subject_slug=input_data.subjectSlug or "cslt",
+                    question_count=input_data.questionCount,
+                    chapters=input_data.chapters,
+                    topics=input_data.topics,
+                    difficulties=input_data.difficulties,
+                    question_types=input_data.questionTypes,
+                ).id
             except InsufficientPoolError as error:
                 raise _error(409, "INSUFFICIENT_POOL", str(error)) from error
         attempt_id = str(uuid.uuid4())
+        time_limit_seconds = input_data.timeLimitSeconds or 1800
         connection = _connection(database)
         try:
+            total_questions = connection.execute(
+                "SELECT COUNT(*) FROM exam_instance_questions WHERE exam_instance_id = ?",
+                (instance_id,),
+            ).fetchone()[0]
             connection.execute(
                 """
-                INSERT INTO attempts (id, exam_instance_id, total_questions, time_limit_seconds, deadline_at)
-                VALUES (?, ?, 40, 1800, datetime('now', '+30 minutes'))
+                INSERT INTO attempts (id, exam_instance_id, mode, total_questions, time_limit_seconds, deadline_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now', ?))
                 """,
-                (attempt_id, instance_id),
+                (attempt_id, instance_id, input_data.mode, total_questions, time_limit_seconds, f"+{time_limit_seconds} seconds"),
             )
             connection.commit()
             return _attempt_payload(connection, attempt_id, include_results=False)
+        finally:
+            connection.close()
+
+    @app.get("/api/attempts/latest-submitted")
+    def get_latest_submitted_attempt() -> dict[str, Any]:
+        connection = _connection(database)
+        try:
+            attempt = connection.execute(
+                """
+                SELECT id, exam_instance_id, mode, started_at, submitted_at, score,
+                       total_questions, time_limit_seconds
+                FROM attempts
+                WHERE status = 'submitted'
+                ORDER BY submitted_at DESC, started_at DESC, id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            if attempt is None:
+                return {"data": None}
+            return {
+                "data": {
+                    "attemptId": attempt["id"],
+                    "examInstanceId": attempt["exam_instance_id"],
+                    "mode": attempt["mode"],
+                    "startedAt": _iso_timestamp(attempt["started_at"]),
+                    "submittedAt": _iso_timestamp(attempt["submitted_at"]),
+                    "score": attempt["score"],
+                    "totalQuestions": attempt["total_questions"],
+                    "timeLimitSeconds": attempt["time_limit_seconds"],
+                }
+            }
+        finally:
+            connection.close()
+
+    @app.get("/api/attempts/recent")
+    def get_recent_attempts(
+        days: int = Query(default=7, ge=1, le=30),
+        subjectSlug: str | None = Query(default=None, min_length=1, max_length=64),
+        submittedDate: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    ) -> dict[str, Any]:
+        connection = _connection(database)
+        try:
+            filters = ["attempts.status = 'submitted'", "attempts.submitted_at >= datetime('now', ?)"]
+            params: list[Any] = [f"-{days} days"]
+            if subjectSlug:
+                filters.append("subjects.slug = ?")
+                params.append(subjectSlug)
+            if submittedDate:
+                filters.append("date(attempts.submitted_at) = ?")
+                params.append(submittedDate)
+            rows = connection.execute(
+                f"""
+                SELECT attempts.id,
+                       attempts.exam_instance_id,
+                       attempts.mode,
+                       attempts.started_at,
+                       attempts.submitted_at,
+                       attempts.score,
+                       attempts.total_questions,
+                       attempts.time_limit_seconds,
+                       exam_instances.title,
+                       exam_instances.source_kind,
+                       exam_instances.status AS exam_status,
+                       subjects.slug AS subject_slug,
+                       subjects.title AS subject_title,
+                       (
+                           SELECT COUNT(*)
+                           FROM attempts AS completed
+                           WHERE completed.exam_instance_id = attempts.exam_instance_id
+                             AND completed.status = 'submitted'
+                       ) AS completed_count
+                FROM attempts
+                JOIN exam_instances ON exam_instances.id = attempts.exam_instance_id
+                LEFT JOIN subjects ON subjects.id = exam_instances.subject_id
+                WHERE {' AND '.join(filters)}
+                ORDER BY attempts.submitted_at DESC, attempts.started_at DESC, attempts.id DESC
+                """,
+                params,
+            ).fetchall()
+            data = []
+            for row in rows:
+                is_published = row["source_kind"] == "published" or row["exam_status"] == "published"
+                data.append(
+                    {
+                        "attemptId": row["id"],
+                        "examInstanceId": row["exam_instance_id"],
+                        "mode": row["mode"],
+                        "startedAt": _iso_timestamp(row["started_at"]),
+                        "submittedAt": _iso_timestamp(row["submitted_at"]),
+                        "score": row["score"],
+                        "totalQuestions": row["total_questions"],
+                        "timeLimitSeconds": row["time_limit_seconds"],
+                        "title": row["title"] or ("Đề có sẵn" if is_published else "Đề ngẫu nhiên"),
+                        "subject": {
+                            "slug": row["subject_slug"] or "cslt",
+                            "title": row["subject_title"] or "Cơ sở lập trình",
+                        },
+                        "tag": "Đề có sẵn" if is_published else "Đề ngẫu nhiên",
+                        "sourceKind": "published" if is_published else "random",
+                        "completedCountForExam": row["completed_count"] if is_published else None,
+                        "resultUrl": f"/result/{row['id']}",
+                    }
+                )
+            return {"data": data}
         finally:
             connection.close()
 
@@ -270,7 +530,25 @@ def create_app(db_path: Path | None = None, admin_token: str | None = None) -> F
                 (attempt_id, position, input_data.selectedAnswer, int(input_data.markedForReview)),
             )
             connection.commit()
-            return {"position": position, "saved": True}
+            payload: dict[str, Any] = {"position": position, "saved": True}
+            if attempt["mode"] == "study" and input_data.selectedAnswer is not None:
+                row = connection.execute(
+                    """
+                    SELECT snapshot_json
+                    FROM exam_instance_questions
+                    WHERE exam_instance_id = ? AND position = ?
+                    """,
+                    (attempt["exam_instance_id"], position),
+                ).fetchone()
+                snapshot = json.loads(row["snapshot_json"])
+                payload.update(
+                    {
+                        "correctAnswer": snapshot["correctAnswer"],
+                        "explanation": snapshot["explanation"],
+                        "isCorrect": input_data.selectedAnswer == snapshot["correctAnswer"],
+                    }
+                )
+            return payload
         finally:
             connection.close()
 

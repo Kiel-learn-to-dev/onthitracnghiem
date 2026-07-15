@@ -9,6 +9,109 @@ from scripts.storage import create_database
 
 
 class StorageSchemaTests(unittest.TestCase):
+    def test_creates_default_subject_and_backfills_canonical_questions(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "review.db"
+            create_database(db_path)
+
+            connection = sqlite3.connect(db_path)
+            try:
+                subject = connection.execute(
+                    "SELECT id, slug, title FROM subjects WHERE slug = 'cslt'"
+                ).fetchone()
+                self.assertIsNotNone(subject)
+                connection.execute(
+                    """
+                    INSERT INTO canonical_questions
+                    (question, choices_json, answer, explanation, topic, difficulty)
+                    VALUES ('Q', '["A", "B", "C", "D"]', 'A', 'G', 'T', 'Dễ')
+                    """
+                )
+                connection.commit()
+                row = connection.execute(
+                    """
+                    SELECT subjects.slug
+                    FROM canonical_questions
+                    JOIN subjects ON subjects.id = canonical_questions.subject_id
+                    WHERE canonical_questions.question = 'Q'
+                    """
+                ).fetchone()
+            finally:
+                connection.close()
+
+        self.assertEqual(row[0], "cslt")
+
+    def test_upgrades_preexisting_database_with_default_subject(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "review.db"
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.execute(
+                    """
+                    CREATE TABLE canonical_questions (
+                        id INTEGER PRIMARY KEY,
+                        content_hash TEXT,
+                        question TEXT NOT NULL,
+                        choices_json TEXT NOT NULL,
+                        answer TEXT NOT NULL,
+                        explanation TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        difficulty TEXT NOT NULL,
+                        assumptions TEXT,
+                        solution_status TEXT NOT NULL DEFAULT 'pending',
+                        reviewed_at TEXT,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO canonical_questions
+                    (question, choices_json, answer, explanation, topic, difficulty)
+                    VALUES ('Old Q', '["A", "B", "C", "D"]', 'A', 'G', 'T', 'Dễ')
+                    """
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            create_database(db_path)
+
+            connection = sqlite3.connect(db_path)
+            try:
+                row = connection.execute(
+                    """
+                    SELECT subjects.slug
+                    FROM canonical_questions
+                    JOIN subjects ON subjects.id = canonical_questions.subject_id
+                    WHERE canonical_questions.question = 'Old Q'
+                    """
+                ).fetchone()
+            finally:
+                connection.close()
+
+        self.assertEqual(row[0], "cslt")
+
+    def test_attempts_have_exam_mode_by_default(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "review.db"
+            create_database(db_path)
+
+            connection = sqlite3.connect(db_path)
+            try:
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(attempts)")
+                }
+                mode_sql = connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'attempts'"
+                ).fetchone()[0]
+            finally:
+                connection.close()
+
+        self.assertIn("mode", columns)
+        self.assertIn("'study'", mode_sql)
+
     def test_creates_tables_and_enforces_difficulty_values(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "review.db"
@@ -23,7 +126,7 @@ class StorageSchemaTests(unittest.TestCase):
                     )
                 }
                 self.assertTrue(
-                    {"sources", "source_questions", "canonical_questions", "solution_audit"}
+                    {"subjects", "sources", "source_questions", "canonical_questions", "solution_audit"}
                     .issubset(tables)
                 )
                 source_columns = {

@@ -4,8 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.exams import InsufficientPoolError, create_exam_instance, publish_standard_exams, refresh_exam_snapshots
-from scripts.storage import create_database
+from scripts.exams import (
+    InsufficientPoolError,
+    create_exam_instance,
+    publish_htttql_sample_exams,
+    publish_standard_exams,
+    refresh_exam_snapshots,
+)
+from scripts.storage import create_database, get_or_create_subject
 
 
 class ExamGeneratorTests(unittest.TestCase):
@@ -97,6 +103,31 @@ class ExamGeneratorTests(unittest.TestCase):
             )
         )
 
+    def test_creates_a_reproducible_custom_subject_exam(self):
+        db_path = self._database_with_questions()
+        connection = sqlite3.connect(db_path)
+        try:
+            subject_id = get_or_create_subject(connection, "htttql", "Hệ thống thông tin quản lý")
+            for index in range(25):
+                connection.execute(
+                    """
+                    INSERT INTO canonical_questions
+                    (subject_id, content_hash, question, choices_json, answer, explanation, topic, chapter, question_type, difficulty, solution_status)
+                    VALUES (?, ?, ?, ?, 'A', 'Giải thích', 'Chương 1', 'Chương 1', 'Định nghĩa', 'Dễ', 'approved')
+                    """,
+                    (subject_id, f"htttql-{index}", f"HTTTQL {index}", json.dumps(["A", "B", "C", "D"])),
+                )
+            connection.commit()
+        finally:
+            connection.close()
+
+        first = create_exam_instance(db_path, seed="custom", subject_slug="htttql", question_count=20)
+        second = create_exam_instance(db_path, seed="custom", subject_slug="htttql", question_count=20)
+
+        self.assertEqual(first.question_ids, second.question_ids)
+        self.assertEqual(len(first.question_ids), 20)
+        self.assertEqual(first.counts_by_difficulty, {"Dễ": 20})
+
     def test_refreshes_existing_exam_stems_after_question_curation(self):
         db_path = self._database_with_questions()
         exam = create_exam_instance(db_path, seed="refresh-stem")
@@ -135,6 +166,42 @@ class ExamGeneratorTests(unittest.TestCase):
 
         self.assertEqual(len(exams), 10)
         self.assertTrue(all(len(exam.question_ids) == 40 for exam in exams))
+
+    def test_publishes_ten_htttql_sample_exams_with_requested_mix_idempotently(self):
+        db_path = self._database_with_questions()
+        connection = sqlite3.connect(db_path)
+        try:
+            subject_id = get_or_create_subject(connection, "htttql", "Hệ thống thông tin quản lý")
+            for difficulty, count in (("Dễ", 40), ("Vừa", 80), ("Khó", 160), ("Rất khó", 120)):
+                for index in range(count):
+                    connection.execute(
+                        """
+                        INSERT INTO canonical_questions
+                        (subject_id, content_hash, question, choices_json, answer, explanation, topic, chapter, question_type, difficulty, solution_status)
+                        VALUES (?, ?, ?, ?, 'A', 'Giải thích', ?, ?, 'Định nghĩa', ?, 'approved')
+                        """,
+                        (
+                            subject_id,
+                            f"htttql-sample-{difficulty}-{index}",
+                            f"HTTTQL {difficulty} {index}",
+                            json.dumps(["A", "B", "C", "D"]),
+                            f"Chủ đề {index % 8}",
+                            f"Chương {(index % 4) + 1}",
+                            difficulty,
+                        ),
+                    )
+            connection.commit()
+        finally:
+            connection.close()
+
+        first = publish_htttql_sample_exams(db_path, count=10, seed_prefix="htttql-sample")
+        second = publish_htttql_sample_exams(db_path, count=10, seed_prefix="htttql-sample")
+
+        self.assertEqual([exam.id for exam in first], [exam.id for exam in second])
+        self.assertEqual(len(first), 10)
+        self.assertTrue(all(exam.counts_by_difficulty == {"Dễ": 4, "Vừa": 8, "Khó": 16, "Rất khó": 12} for exam in first))
+        ids = [question_id for exam in first for question_id in exam.question_ids]
+        self.assertEqual(len(ids), len(set(ids)))
 
 
 if __name__ == "__main__":

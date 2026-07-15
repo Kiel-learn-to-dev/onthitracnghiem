@@ -1,16 +1,62 @@
 {% extends "base.html" %}
-{% block title %}Bắt đầu ôn thi | CSLT{% endblock %}
+{% block title %}Bắt đầu ôn thi{% endblock %}
 {% block content %}
 <section class="landing" aria-labelledby="page-title">
-  <p class="eyebrow">Cơ sở lập trình</p>
-  <h1 id="page-title">Luyện đề 40 câu, đúng tỷ lệ đã duyệt.</h1>
-  <p class="lede">Mỗi lượt đề gồm 12 câu Dễ, 8 câu Vừa, 8 câu Khó và 12 câu Rất khó. Thời gian làm bài là 30 phút; đáp án và lời giải chỉ hiện sau khi nộp.</p>
-  <div class="blueprint" aria-label="Cấu trúc đề"><span>12 Dễ</span><span>8 Vừa</span><span>8 Khó</span><span>12 Rất khó</span></div>
-  <section class="exam-picker" aria-labelledby="published-exams-title">
-    <div class="section-heading"><div><h2 id="published-exams-title">Chọn đề có sẵn</h2><p>10 đề chuẩn đã được tạo sẵn.</p></div><button id="random-published-exam" class="button button-secondary" type="button">Bốc ngẫu nhiên 1 đề</button></div>
-    <div id="published-exams" class="published-exams" aria-busy="true"></div>
-  </section>
-  <div class="random-exam"><div><h2>Đề ngẫu nhiên mới</h2><p>Trộn lại câu hỏi sạch thành một đề 40 câu khác.</p></div><button id="start-exam" class="button button-primary" type="button">Tạo đề ngẫu nhiên</button></div>
+  <p class="eyebrow">Ngân hàng nhiều môn</p>
+  <h1 id="page-title">Tạo đề ôn thi theo môn, số câu và thời gian.</h1>
+  <p class="lede">Chọn cấu hình đề trước khi bắt đầu. Ở chế độ thi thử, đáp án và lời giải chỉ hiện sau khi nộp bài.</p>
+
+  <div class="home-workspace">
+    <div class="home-main-column">
+      <form id="exam-setup" class="setup-panel" aria-label="Cấu hình đề thi">
+        <div class="setup-grid">
+          <label>Môn học<select id="subject-select" name="subjectSlug" required></select></label>
+          <label>Chế độ<select id="mode-select" name="mode"><option value="exam" selected>Thi thử</option><option value="study">Ôn tập</option></select></label>
+          <label>Số câu<input id="question-count" name="questionCount" type="number" min="1" max="200" value="40"></label>
+          <label>Thời gian<select id="time-limit" name="timeLimitSeconds"><option value="900">15 phút</option><option value="1800" selected>30 phút</option><option value="2700">45 phút</option><option value="3600">60 phút</option></select></label>
+          <label>Chương<select id="chapter-select" name="chapter"><option value="">Tất cả</option></select></label>
+          <label>Độ khó<select id="difficulty-select" name="difficulty"><option value="">Tất cả</option></select></label>
+          <label>Dạng câu<select id="question-type-select" name="questionType"><option value="">Tất cả</option></select></label>
+        </div>
+        <div class="setup-actions">
+          <button id="start-exam" class="button button-primary" type="submit">Tạo đề</button>
+          <p id="catalog-summary" class="status-message" aria-live="polite"></p>
+        </div>
+      </form>
+
+      <section class="exam-picker" aria-labelledby="published-exams-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="published-exams-title">Chọn đề có sẵn</h2>
+            <p>Đề chuẩn đã được tạo sẵn.</p>
+          </div>
+          <div class="published-actions">
+            <label>Môn<select id="published-subject-select" name="publishedSubjectSlug"></select></label>
+            <button id="random-published-exam" class="button button-secondary" type="button">Bốc ngẫu nhiên 1 đề</button>
+          </div>
+        </div>
+        <div id="published-exams" class="published-exams" aria-busy="true"></div>
+      </section>
+    </div>
+
+    <aside class="home-history-column">
+      <section id="recent-attempts" class="recent-attempts" aria-labelledby="recent-attempts-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Lịch sử 7 ngày</p>
+            <h2 id="recent-attempts-title">Xem lại đề đã làm</h2>
+          </div>
+        </div>
+        <div class="history-filters" aria-label="Lọc lịch sử làm bài">
+          <label>Môn<select id="history-subject-select" name="historySubjectSlug"></select></label>
+          <label>Ngày<input id="history-date-input" name="historyDate" type="date"></label>
+          <button id="clear-history-filters" class="button button-secondary" type="button">Tất cả</button>
+        </div>
+        <div id="recent-attempt-list" class="recent-attempt-list" aria-live="polite"></div>
+      </section>
+    </aside>
+  </div>
+
   <p id="home-status" class="status-message" aria-live="polite"></p>
 </section>
 {% endblock %}

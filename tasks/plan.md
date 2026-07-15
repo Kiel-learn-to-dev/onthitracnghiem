@@ -1,166 +1,149 @@
-# Kế hoạch triển khai webapp ôn thi trắc nghiệm — Cơ sở lập trình
+# Implementation Plan: Multi-Subject Exam Review App
 
-## Mục tiêu
+## Overview
 
-Xây dựng webapp ôn thi cho môn **Cơ sở lập trình**, tạo đề 40 câu theo blueprint cố định:
+Upgrade the current CSLT exam app into a multi-subject review and mock-exam platform. The app should keep the existing FastAPI + SQLite + TypeScript architecture, add a subject-aware question bank, import the HTTTQL HTML bank, and let users configure subject, number of questions, time limit, chapters/topics, difficulty, and question type before starting an exam.
 
-| Nhóm độ khó | Số câu/đề | Tỷ lệ |
-| --- | ---: | ---: |
-| Dễ | 12 | 30% |
-| Vừa + Khó | 16 | 40% |
-| Rất khó | 12 | 30% |
+## Current Baseline
 
-Mặc định, 16 câu ở nhóm giữa được chia thành 8 câu Vừa và 8 câu Khó. Chỉ được bù giữa hai mức này khi dữ liệu sau lọc không đủ; lần bù phải được ghi lại trong đề để kiểm tra.
+- The workspace app already supports server-side exam attempts, hidden answers before submit, autosave, countdown timer, published exams, and admin review.
+- The current data model is single-subject by implication: `canonical_questions` has `topic` and `difficulty`, but no explicit `subject`, `chapter`, or `question_type`.
+- Exam generation is fixed to 40 questions with the current `12/8/8/12` difficulty blueprint.
+- Attempts are fixed to 30 minutes in the API, even though the schema already stores `time_limit_seconds` and `deadline_at`.
+- The downloaded HTTTQL HTML file already has useful labels: `chapter`, `difficulty`, and `type`; the latest `HTTTQL_30_BO_DE_40_CAU_NANG_CAP.html` contains 1,200 questions and added 296 new canonical questions to the existing HTTTQL pool.
 
-## Kết quả kiểm kê database (13/07/2026)
+## Architecture Decisions
 
-### Nguồn và liên kết dữ liệu
+- Keep SQLite as the source of truth and migrate in place. Add subject-aware tables/columns rather than creating a separate database per subject.
+- Keep answer secrecy server-side. The frontend should not receive `correctAnswer` or `explanation` until an attempt is submitted.
+- Treat "exam configuration" as a first-class input to exam generation. Published exams remain supported, but random/custom attempts should use a configurable blueprint.
+- Importers should normalize external data into the existing canonical model with provenance. For the HTTTQL HTML file, map `chapter` to chapter, `type` to question type, and set `subject` to HTTTQL.
+- Build vertical slices: first make one imported subject selectable end-to-end, then add richer filters and admin polish.
 
-| Nguồn | Lượt câu | Đã liên kết canonical | Ghi chú |
-| --- | ---: | ---: | --- |
-| `200_cau_hoi_CSLT.xlsx` | 200 | 200 | Đủ 4 phương án, đáp án và giải thích |
-| `đề 1.pdf` | 241 | 0 | Đã tách câu; chưa tách phương án |
-| `đề 2.pdf` | 50 | 0 | Đã tách câu; chưa tách phương án |
-| `Câu hỏi ôn tập-e.pdf` | 225 | 0 | OCR; còn cần duyệt trích xuất |
-| **Tổng** | **716** | **200** | **516 câu cần chuẩn hóa thành canonical** |
-
-- 716 câu có nội dung câu hỏi khác nhau khi so khớp chính xác trên văn bản đã chuẩn hóa. So khớp gần (near-duplicate) chưa thực hiện.
-- Chưa có câu nào `approved`; 200 canonical hiện đều `drafted`. Vì vậy pool được phép phát hành hiện là **0 câu**.
-- 665/716 câu có trạng thái đáp án `extracted` hoặc `solved`; 51 câu còn `needs_review`.
-- 491/716 câu có trạng thái trích xuất `extracted`; toàn bộ 225 câu từ PDF OCR còn `needs_review`.
-- Chỉ 200/716 câu có đúng 4 phương án lựa chọn có thể dùng ngay. 516 câu PDF hiện lưu danh sách phương án rỗng; cần tách lại A–D và duyệt đối chiếu bản gốc.
-
-### Phân bố độ khó hiện tại
-
-| Độ khó | Số câu thô đã gắn tag |
-| --- | ---: |
-| Dễ | 151 |
-| Vừa | 236 |
-| Khó | 201 |
-| Rất khó | 128 |
-| **Tổng** | **716** |
-
-Các tag từ PDF đang là `rule_based`, chưa thay thế cho đánh giá chuyên môn. Tag từ Excel được giữ theo nguồn. Cần duyệt lại các tag trước khi dùng làm đề chính thức.
-
-## Số lượng đề đề xuất
-
-### Đề chuẩn không lặp câu
-
-Sau khi mọi câu được chuẩn hóa, xác minh và `approved`, ngân hàng hiện tại đủ để phát hành **10 đề chuẩn 40 câu không lặp câu giữa các đề**:
-
-- 10 × 12 câu Dễ = 120 câu (còn 31 câu Dễ).
-- 10 × 16 câu Vừa + Khó = 160 câu (còn 277 câu nhóm giữa).
-- 10 × 12 câu Rất khó = 120 câu (còn 8 câu Rất khó).
-
-Nhóm **Rất khó (128 câu)** là nút thắt: `floor(128 / 12) = 10`. Không nên hứa hơn 10 đề chuẩn không lặp câu trước khi bổ sung tối thiểu 4 câu Rất khó đã duyệt cho đề thứ 11, hoặc thay đổi blueprint.
-
-### Chế độ random
-
-Ngoài 10 đề chuẩn có mã đề cố định, webapp có thể tạo nhiều phiên random từ cùng ngân hàng. Câu có thể lặp giữa các lần làm khác nhau, nhưng không được lặp trong một đề. Cần hiển thị mã đề, seed và snapshot ID để tái lập chính xác phiên làm bài khi cần phúc khảo.
-
-## Quy tắc dữ liệu trước khi phát hành
-
-Một câu chỉ được vào pool thi khi đồng thời có:
-
-1. Nội dung câu hỏi và đúng 4 lựa chọn A–D không rỗng.
-2. Một đáp án A–D đã xác minh; nếu có xung đột giữa nguồn và lời giải thì chuyển `needs_review`.
-3. Lời giải ngắn, có thể hiểu độc lập; với C/C++ phải ghi rõ giả định compiler/chuẩn/ngữ cảnh khi cần.
-4. Một chủ đề và một độ khó đã được duyệt thủ công.
-5. Liên kết `canonical_question` và ít nhất một nguồn gốc (tài liệu, trang, số thứ tự).
-6. `solution_status = approved`; câu OCR cần duyệt hình gốc trước khi đạt trạng thái này.
-
-## Kiến trúc đề xuất
+## Dependency Graph
 
 ```text
-Tài liệu nguồn -> import/OCR -> source_questions (provenance)
-                              -> canonical_questions (đã duyệt)
-                              -> API tạo đề/chấm điểm
-                              -> webapp học viên + trang quản trị
+Subject/question schema
+  -> Migration/backfill for existing CSLT data
+  -> HTTTQL importer
+  -> Subject/catalog API
+  -> Configurable exam generator
+  -> Attempt creation API
+  -> Home setup UI
+  -> Exam/result metadata display
+  -> Admin import/review UI
+
+Submitted attempt review
+  -> Submitted-only result payload and route guard
+  -> Result screen answer/explanation states
+  -> Latest submitted attempt metadata API
+  -> Home "xem lại bài vừa thi" entry point
+
+Subject-aware published exams and history
+  -> Published exam metadata with subject/source kind
+  -> HTTTQL published blueprint and 10 sample exams
+  -> Published exam subject picker
+  -> 7-day submitted attempt history API
+  -> Home history list with exam tags and completion counts
 ```
 
-- Duy trì SQLite là nguồn sự thật; giữ `source_questions` để truy vết, chỉ `canonical_questions` đã duyệt được phát hành.
-- Bổ sung các bảng `exam_blueprints`, `exam_instances`, `exam_instance_questions`, `attempts`, `attempt_answers` và `review_queue`.
-- Stack MVP nhẹ: **FastAPI + Jinja templates + TypeScript ES modules + Tailwind CSS biên dịch tĩnh**. Không dùng React, chart library, UI runtime hay ảnh trang trí; các control chỉ dùng HTML native và SVG icon nhất quán.
-- API phía máy chủ tạo đề và chấm điểm. Không đưa đáp án/lời giải vào payload trước khi nộp bài; frontend tĩnh chứa sẵn đáp án không phù hợp cho chế độ thi.
-- Giao diện gồm hai vai trò: học viên (làm đề, xem kết quả/lịch sử) và quản trị (duyệt dữ liệu, xem hàng đợi lỗi, tạo/publish đề).
+## Task List
 
-## Blueprint nội dung và trải nghiệm
+### Phase 1: Subject Foundation
 
-- Áp dụng tỷ lệ 12 Dễ / 8 Vừa / 8 Khó / 12 Rất khó; xác thực trước khi tạo đề.
-- Sau khi chủ đề PDF được chuẩn hóa, mỗi đề phải phủ tối thiểu 5 chủ đề và không quá 35% câu từ một chủ đề, trừ khi quản trị chọn chế độ ôn theo chủ đề.
-- Luôn lấy mẫu không hoàn lại theo `canonical_question.id`; lưu snapshot câu hỏi và thứ tự hiển thị vào `exam_instance`.
-- Cho phép trộn thứ tự câu và phương án nhưng không thay đổi nghĩa của câu (đặc biệt với “tất cả đáp án trên”).
-- Màn hình làm bài: đồng hồ tùy chọn, bảng điều hướng 40 câu, đánh dấu câu cần xem lại, tự lưu đáp án, nộp bài có xác nhận.
-- Màn hình kết quả: điểm, tỷ lệ theo độ khó/chủ đề, đáp án đúng, lời giải và danh sách cần ôn lại. Không công bố lời giải trước khi nộp.
+- [x] Task 1: Add subject-aware schema and backfill CSLT
+- [x] Task 2: Add subject/catalog read APIs
+- [x] Task 3: Import HTTTQL HTML into canonical questions
 
-## Thiết kế UI — laptop-first, nhẹ và mượt
+### Checkpoint: Multi-Subject Data Exists
 
-Thiết kế chi tiết nằm tại `tasks/ui-design.md`. Quyết định cốt lõi:
+- [x] Existing CSLT attempts/tests still pass
+- [x] `subjects` contains CSLT and HTTTQL
+- [x] HTTTQL questions import with chapter, difficulty, type, answer, explanation, and provenance
 
-- Chỉ tối ưu cho viewport laptop từ **1024px**; ưu tiên 1280–1440px. Ở 1024–1199px, thanh điều hướng câu thu gọn thành panel mở bằng nút; không triển khai trải nghiệm mobile-first trong MVP.
-- Giao diện “quiet academic”: nền slate rất nhạt, chữ slate đậm, xanh dương làm màu hành động duy nhất; không gradient, không minh họa, không card/shadow dày, không emoji làm icon.
-- Dùng system font để không phát sinh tải font/CLS; font mono hệ thống chỉ cho code C/C++ và timer. Dùng SVG icon cùng một bộ khi thật sự cần.
-- Mỗi lần mở đề tải một payload chứa đủ 40 câu **không có đáp án/lời giải**, sau đó đổi câu tại client không gọi mạng. Chọn đáp án phản hồi ngay; autosave nền được debounce 400ms và có trạng thái “Đã lưu/Đang lưu/Lưu lỗi”.
-- Chỉ dùng chuyển màu/opacity 120–160ms; tôn trọng `prefers-reduced-motion`. Không có animation trang, biểu đồ hoặc hiệu ứng không phục vụ thao tác.
-- Mọi thao tác làm bài có thể dùng bàn phím: `1–4` chọn đáp án, mũi tên trái/phải chuyển câu, `R` đánh dấu xem lại (không kích hoạt khi đang focus vào input). Có focus ring, skip link, thứ tự Tab hợp lý và không dùng màu làm tín hiệu duy nhất.
+### Phase 2: Configurable Exam Generation
 
-### Ngân sách hiệu năng UI
+- [x] Task 4: Generalize exam configuration model
+- [x] Task 5: Generate exams from subject + filters + question count
+- [x] Task 6: Create attempts with custom time limits
 
-| Hạng mục | Mục tiêu MVP |
-| --- | --- |
-| JavaScript tải ban đầu | ≤ 80 KB gzip, không tính runtime trình duyệt |
-| CSS đã build | ≤ 25 KB gzip |
-| Payload một đề 40 câu | ≤ 150 KB nén, không có đáp án/lời giải |
-| Phản hồi chọn đáp án/chuyển câu | cập nhật UI trong <100 ms, không chờ API |
-| Tự lưu | debounce 400 ms, retry có kiểm soát khi lỗi mạng |
-| Hiệu ứng UI | chỉ `opacity`/`transform`, 120–160 ms hoặc tắt khi reduced motion |
+### Checkpoint: Configurable Attempt Works
 
-## Lộ trình theo lát dọc
+- [x] API can create a 20-question HTTTQL attempt with a 15-minute timer
+- [x] API can still create the old 40-question CSLT default attempt
+- [x] Missing-pool errors identify the lacking bucket/filter
 
-### Giai đoạn 1 — Hoàn thiện ngân hàng phát hành
+### Phase 3: Student Experience
 
-1. Chuẩn hóa 516 câu PDF: tách A–D, khôi phục trang/số câu, tạo canonical và hàng đợi OCR.
-2. Đối chiếu 51 đáp án còn `needs_review`; phát hiện xung đột đáp án/lời giải.
-3. Gắn chủ đề đầy đủ, kiểm duyệt độ khó và phát hiện trùng gần.
-4. Chỉ chuyển `approved` khi đạt đủ 6 điều kiện phát hành; xuất báo cáo coverage theo chủ đề/độ khó.
+- [x] Task 7: Build subject and exam setup UI
+- [x] Task 8: Update exam and result views for variable metadata
+- [x] Task 9: Add study mode as a separate non-exam flow
 
-### Checkpoint dữ liệu
+### Checkpoint: End-To-End Student Flow
 
-- Có ít nhất 120 Dễ, 80 Vừa, 80 Khó và 120 Rất khó đã `approved`, mỗi câu có 4 phương án.
-- Có thể tạo 10 đề không lặp câu và mọi đề đều đúng blueprint 12/8/8/12.
-- Báo cáo riêng các câu OCR, đáp án mâu thuẫn và câu phụ thuộc compiler/undefined behavior.
+- [x] User selects a subject and starts a custom timed exam
+- [x] Timer, progress, navigation, save, submit, and result work for variable question counts
+- [x] Answers remain hidden until submit in exam mode
 
-### Giai đoạn 2 — Đề và API
+### Phase 4: Review Submitted Attempts
 
-5. Thêm schema đề/phiên làm bài cùng migration có thể chạy lặp lại.
-6. Xây bộ tạo đề có seed, kiểm tra tỷ lệ/chủ đề/không lặp và thông báo thiếu pool rõ ràng.
-7. Cài API tạo đề, lưu đáp án, nộp bài và trả kết quả sau nộp.
+- [x] Task 10: Define the submitted-review API contract and route guard
+- [x] Task 11: Polish the result page into a submitted-exam review screen
+- [x] Task 12: Add a recent submitted attempt entry point on the home screen
 
-### Checkpoint luồng lõi
+### Checkpoint: Submitted Review Flow
 
-- Test tạo 100 đề random: mỗi đề 40 câu, 12/8/8/12, không trùng ID nội bộ.
-- Cùng seed và snapshot luôn tái tạo cùng đề.
-- Không có API trước nộp trả đáp án hoặc lời giải.
+- [x] After submitting, users land on a review page with selected answers, correct answers, unanswered states, and explanations.
+- [x] Directly opening a result URL for an in-progress attempt redirects back to the exam page without answer data.
+- [x] The home screen can reopen the latest submitted attempt for review after refresh or app restart.
 
-### Giai đoạn 3 — Webapp và quản trị
+### Phase 5: Subject-Aware Published Exams and 7-Day History
 
-8. Xây app shell laptop-first và luồng làm bài: chọn đề, tải trước 40 câu, tự lưu, bàn phím và nộp bài.
-9. Xây trang kết quả và màn quản trị tối giản: review queue, audit, tạo/publish 10 đề chuẩn.
-10. Kiểm thử end-to-end, ngân sách hiệu năng/accessibility, sao lưu SQLite và hướng dẫn vận hành.
+- [x] Task 13: Add subject/source metadata for published exam instances
+- [x] Task 14: Publish 10 HTTTQL sample exams with the requested difficulty mix
+- [x] Task 15: Add a subject picker for published exams on the home screen
+- [x] Task 16: Replace latest submitted attempt metadata with a 7-day history API
+- [x] Task 17: Show the 7-day review history on the home screen
+- [x] Task 18: Document and verify the HTTTQL published-exam/history upgrade
 
-## Rủi ro và cách xử lý
+### Checkpoint: Published Exams and History Work End-to-End
 
-| Rủi ro | Tác động | Cách xử lý |
+- [x] User can choose a subject before selecting a published exam.
+- [x] HTTTQL has 10 published sample exams, each with 40 questions and the requested difficulty mix.
+- [x] Home history shows submitted attempts from the last 7 days with "Đề có sẵn" or "Đề ngẫu nhiên" tags.
+- [x] Published exam history rows show how many times that exam has been submitted.
+
+### Phase 6: Admin and Release Quality
+
+- [ ] Task 19: Extend admin question list/import controls for subjects
+- [ ] Task 20: Add regression tests and data reports
+- [ ] Task 21: Update docs, build, and handoff checklist
+
+### Checkpoint: Ready for Review
+
+- [ ] Unit and API tests pass
+- [ ] `npm.cmd run build` succeeds
+- [ ] Manual smoke test covers CSLT and HTTTQL
+- [ ] README documents import, subject setup, and configurable exams
+
+## Risks and Mitigations
+
+| Risk | Impact | Mitigation |
 | --- | --- | --- |
-| 516 câu PDF chưa có phương án A–D | Không thể phát hành đề đúng nghĩa trắc nghiệm | Ưu tiên parser/duyệt phương án trước UI |
-| 225 câu OCR chưa duyệt | Sai câu, mất ký tự code hoặc đáp án | Đối chiếu ảnh gốc; chỉ approved sau duyệt |
-| Tag độ khó tự động sai | Phân bố đề thiếu công bằng | Duyệt chuyên môn, lưu lý do/nguồn tag |
-| Code C/C++ phụ thuộc môi trường | Chấm sai hoặc lời giải gây tranh cãi | Nêu giả định; gắn cờ/loại câu UB khỏi đề chuẩn |
-| Thiếu dependency `pypdf` ở môi trường hiện tại | Bộ test import PDF không chạy đầy đủ | Khai báo dependency tái lập được và chạy test trong môi trường sạch |
-| UI nặng hoặc render giật khi làm bài | Mất tập trung, dễ chọn nhầm đáp án | Không dùng UI runtime; preload 40 câu; đo bundle và giữ thay đổi UI cục bộ |
+| Existing CSLT flows break during schema migration | High | Add migrations as additive changes and backfill CSLT in tests before changing UI |
+| HTTTQL HTML is a large inline JavaScript dataset | Medium | Write a dedicated importer that extracts `SOURCE_QUESTIONS` and validates count/fields |
+| Question counts and difficulty filters can request impossible exams | Medium | Return structured insufficient-pool errors before creating attempts |
+| Published exams assume fixed 40-question metadata | Medium | Keep published exam compatibility first, then add optional blueprint/config fields |
+| Study mode could blur with exam mode and leak answers | High | Separate API/UI mode: study can reveal answer immediately; exam cannot |
+| Vietnamese text encoding may regress in scripts/templates | Medium | Keep files UTF-8, add importer tests with Vietnamese chapter/difficulty/type values |
+| Published exam history could leak answer data before review | High | Keep the recent-history endpoint metadata-only and link to the existing submitted-only result route |
+| HTTTQL sample exams may accidentally reuse or underfill difficulty buckets | Medium | Validate 4 easy, 8 medium, 16 hard, and 12 very-hard questions per 40-question exam before publishing |
+| "Đã làm bao nhiêu lần" may be ambiguous | Low | Count submitted attempts for the same published exam instance unless the product decision changes |
 
-## Câu hỏi cần chốt trước khi code webapp
+## Open Questions
 
-1. Webapp chỉ dùng nội bộ một lớp hay cần tài khoản cho nhiều học viên/lớp?
-2. Có yêu cầu giới hạn thời gian, chống gian lận hoặc xuất PDF đề đáp án không?
-3. Ai là người duyệt độ khó/chủ đề cho các câu PDF trước khi publish?
+- Should HTTTQL be named "Hệ thống thông tin quản lý" in the UI, or a shorter label like "HTTTQL"?
+- Should custom exams preserve the CSLT 12/8/8/12 ratio by default, or simply sample evenly from the selected filters?
+- Should teachers/admins be able to create named reusable blueprints, or is per-attempt setup enough for the first version?
+- Should the 10 HTTTQL sample exams avoid reusing questions across all 10 exams, or is uniqueness within each exam enough? Recommended: avoid reuse across all 10 because the imported pool is large enough.
+- Should "Đã làm X lần" count only submitted attempts, or every started attempt? Recommended: count submitted attempts only.

@@ -7,13 +7,18 @@
       <p class="eyebrow">Kết quả & ôn lại</p>
       <h1 id="result-title">Đang tải kết quả…</h1>
       <p id="result-summary" class="progress-text"></p>
+      <dl id="result-breakdown" class="result-breakdown" aria-label="Tóm tắt kết quả">
+        <div><dt>Đúng</dt><dd id="result-correct-count">0</dd></div>
+        <div><dt>Sai</dt><dd id="result-wrong-count">0</dd></div>
+        <div><dt>Chưa trả lời</dt><dd id="result-unanswered-count">0</dd></div>
+      </dl>
     </div>
     <div id="result-question-nav" class="question-nav" aria-label="Danh sách câu hỏi"></div>
     <a class="button button-primary" href="/">Làm đề mới</a>
   </aside>
   <section class="result-workspace">
     <section class="exam-content result-question-content" aria-labelledby="result-question-heading">
-      <div class="exam-meta"><span id="result-question-topic"></span><span id="result-question-status"></span></div>
+      <div class="exam-meta"><span id="result-question-topic"></span><span id="result-question-status" class="result-question-status"></span></div>
       <h2 id="result-question-heading" tabindex="-1">Đang tải câu hỏi…</h2>
       <p id="result-question-text" class="result-question"></p>
       <ol id="result-question-choices" class="review-choices" aria-label="Các lựa chọn"></ol>

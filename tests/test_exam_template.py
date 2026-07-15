@@ -14,7 +14,27 @@ class ExamTemplateTests(unittest.TestCase):
 
         self.assertIn('id="result-question-nav"', result_template)
         self.assertIn('id="result-explanation"', result_template)
+        self.assertIn('id="result-breakdown"', result_template)
+        self.assertIn("unanswered", frontend)
         self.assertIn("renderResultQuestion", frontend)
+
+    def test_home_page_can_show_recent_attempt_history_and_filter_published_subjects(self):
+        home_template = (Path(__file__).parent.parent / "templates" / "home.html").read_text(encoding="utf-8")
+        frontend = (Path(__file__).parent.parent / "frontend" / "app.ts").read_text(encoding="utf-8")
+
+        self.assertIn('id="recent-attempts"', home_template)
+        self.assertIn('id="recent-attempt-list"', home_template)
+        self.assertIn('id="published-subject-select"', home_template)
+        self.assertIn('id="history-subject-select"', home_template)
+        self.assertIn('id="history-date-input"', home_template)
+        self.assertIn('id="clear-history-filters"', home_template)
+        self.assertIn('class="home-workspace"', home_template)
+        self.assertIn('class="home-history-column"', home_template)
+        self.assertIn("/api/attempts/recent", frontend)
+        self.assertIn("submittedDate", frontend)
+        self.assertIn("historySubjectSelect", frontend)
+        self.assertIn("Đề có sẵn", frontend)
+        self.assertIn("Đề ngẫu nhiên", frontend)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # CSLT Ôn thi
 
-Webapp luyện trắc nghiệm Cơ sở lập trình. Mỗi đề gồm 40 câu theo blueprint 12 Dễ / 8 Vừa / 8 Khó / 12 Rất khó. Đáp án và lời giải không xuất hiện trước khi nộp.
+Webapp luyện trắc nghiệm nhiều môn. Đáp án và lời giải không xuất hiện trước khi nộp bài; sau khi nộp, người học có thể xem lại bài trong lịch sử 7 ngày.
 
 ## Chạy ứng dụng
 
@@ -22,7 +22,30 @@ Chuẩn hóa pool hiện có rồi chạy app:
 py -m scripts.release_pool
 ```
 
-Thao tác quản trị **Publish 10 đề chuẩn** chỉ chạy một lần và từ chối tạo thêm đề để không làm lặp câu. Mỗi đề giữ seed, snapshot và thứ tự câu trong SQLite.
+Import thêm ngân hàng HTTTQL từ file HTML có `SOURCE_QUESTIONS`:
+
+```powershell
+py -m scripts.import_htttql_html F:\Downloads\HTTTQL_30_BO_DE_40_CAU_NANG_CAP.html --db data\review.db
+```
+
+Nên backup `data\review.db` trước khi import. Lần import file `HTTTQL_30_BO_DE_40_CAU_NANG_CAP.html` ngày 2026-07-15 đọc 1.200 câu và thêm 296 câu canonical HTTTQL chưa có.
+
+Tạo hoặc refresh 10 đề mẫu HTTTQL:
+
+```powershell
+py -c "from pathlib import Path; from scripts.storage import create_database; from scripts.exams import publish_htttql_sample_exams; db=Path('data/review.db'); create_database(db); exams=publish_htttql_sample_exams(db); print(len(exams))"
+```
+
+Lệnh này idempotent: chạy lại sẽ trả về bộ đề đã có thay vì tạo thêm. Mỗi đề HTTTQL có 40 câu, nội bộ dùng 4 Dễ / 8 Vừa / 16 Khó / 12 Rất khó; tỷ lệ này dùng để kiểm tra dữ liệu và không hiển thị trên UI học viên. Nên backup `data\review.db` trước khi import hoặc refresh đề mẫu.
+
+Thao tác quản trị **Publish 10 đề chuẩn** dành cho CSLT chỉ chạy một lần và từ chối tạo thêm đề để không làm lặp câu. Mỗi đề giữ seed, snapshot và thứ tự câu trong SQLite.
+
+## Hành vi học viên
+
+- Phần **Chọn đề có sẵn** có bộ chọn môn riêng và chỉ hiển thị đề đã publish của môn đang chọn.
+- Phần **Xem lại đề đã làm** hiển thị các bài đã nộp trong 7 ngày gần nhất.
+- Bài làm từ đề publish có tag `Đề có sẵn` và nhãn `Đã làm X lần` tính theo số lượt nộp của cùng đề đó.
+- Bài làm từ đề tạo ngẫu nhiên/custom có tag `Đề ngẫu nhiên`.
 
 ## Backup và restore
 
