@@ -33,6 +33,8 @@ class ExamTemplateTests(unittest.TestCase):
         self.assertIn("/api/attempts/recent", frontend)
         self.assertIn("submittedDate", frontend)
         self.assertIn("historySubjectSelect", frontend)
+        self.assertIn("formatDateInputValue", frontend)
+        self.assertIn("historyDateInput.value = formatDateInputValue()", frontend)
         self.assertIn("Đề có sẵn", frontend)
         self.assertIn("Đề ngẫu nhiên", frontend)
 

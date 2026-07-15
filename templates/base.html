@@ -4,13 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
-    <title>{% block title %}CSLT Ôn thi{% endblock %}</title>
+    <title>{% block title %}Ôn thi HUB{% endblock %}</title>
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body data-page="{{ page }}"{% if attempt_id %} data-attempt-id="{{ attempt_id }}"{% endif %}>
     <a class="skip-link" href="#main-content">Chuyển đến nội dung chính</a>
     <header class="site-header">
-      <a class="brand" href="/">CSLT <span>Ôn thi</span></a>
+      <a class="brand" href="/">Ôn thi <span>HUB</span></a>
       <nav aria-label="Điều hướng chính"><a href="/">Làm đề</a><a href="/admin">Quản trị</a></nav>
     </header>
     <main id="main-content" tabindex="-1">{% block content %}{% endblock %}</main>

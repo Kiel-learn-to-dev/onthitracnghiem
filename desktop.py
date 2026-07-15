@@ -77,7 +77,7 @@ def main() -> None:
     thread = threading.Thread(target=server.run, name="csltonthi-server", daemon=True)
     thread.start()
     _wait_for_server(port)
-    webview.create_window("CSLT Ôn thi", f"http://127.0.0.1:{port}/", width=1280, height=900, min_size=(1024, 700))
+    webview.create_window("Ôn thi HUB", f"http://127.0.0.1:{port}/", width=1280, height=900, min_size=(1024, 700))
     try:
         if sys.platform == "win32":
             webview.start(gui="edgechromium")

@@ -1,4 +1,4 @@
-# CSLT Ôn thi
+# Ôn thi HUB
 
 Webapp luyện trắc nghiệm nhiều môn. Đáp án và lời giải không xuất hiện trước khi nộp bài; sau khi nộp, người học có thể xem lại bài trong lịch sử 7 ngày.
 

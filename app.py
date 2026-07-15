@@ -149,7 +149,7 @@ def create_app(db_path: Path | None = None, admin_token: str | None = None) -> F
     )
     create_database(database)
     expected_admin_token = admin_token if admin_token is not None else os.getenv("CSLT_ADMIN_TOKEN")
-    app = FastAPI(title="CSLT Ôn thi", version="1.0.0")
+    app = FastAPI(title="Ôn thi HUB", version="1.0.0")
     root = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=root / "templates")
     app.mount("/static", StaticFiles(directory=root / "static"), name="static")

@@ -9,4 +9,4 @@ npm run build
 rm -rf build dist
 python3 setup_macos.py py2app
 mkdir -p output
-hdiutil create -volname "CSLT Ôn thi" -srcfolder "dist/CSLT-OnThi.app" -ov -format UDZO "output/CSLT-OnThi-1.0.0.dmg"
+hdiutil create -volname "Ôn thi HUB" -srcfolder "dist/CSLT-OnThi.app" -ov -format UDZO "output/CSLT-OnThi-1.0.0.dmg"

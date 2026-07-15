@@ -1,4 +1,4 @@
-#define AppName "CSLT Ôn thi"
+#define AppName "Ôn thi HUB"
 #define AppVersion "1.0.0"
 #define AppExeName "CSLT-OnThi.exe"
 
